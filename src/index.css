@@ -1,0 +1,29 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #e8e6e1;
+}
+* {
+  box-sizing: border-box;
+}
+#root {
+  min-height: 100vh;
+}
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+a {
+  color: #d6197e;
+}
+a:hover {
+  color: #a81363;
+}
+@keyframes crmspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
