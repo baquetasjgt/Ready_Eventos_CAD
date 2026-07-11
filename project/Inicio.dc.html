@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #E8E6E1; }
+  * { box-sizing: border-box; }
+  input, select, textarea, button { font-family: inherit; }
+  a { color: #D6197E; }
+  a:hover { color: #A81363; }
+  @keyframes crmspin { to { transform: rotate(360deg); } }
+</style>
+</helmet>
+
+<div id="approot" data-screen-label="Proyectos" style="min-height:100vh;background:#E8E6E1;color:#17161A;font-family:'Archivo','Helvetica Neue',Helvetica,sans-serif;">
+  <div style="max-width:1100px;margin:0 auto;padding:44px 28px 110px;display:flex;flex-direction:column;gap:20px;">
+
+    <div style="display:flex;align-items:center;gap:16px;">
+      <img src="assets/logo.png" alt="Ready Eventos" style="width:46px;height:auto;"></img>
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;">
+        <div style="font-size:24px;font-weight:800;letter-spacing:-0.01em;">{{ titulo }}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A867F;letter-spacing:0.08em;text-transform:uppercase;">Ready Eventos · CRM · documento de venta · memoria y planos</div>
+      </div>
+      <sc-if value="{{ esProyectos }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ abrirForm }}" style="border:none;background:#D6197E;color:#fff;border-radius:9px;padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer;letter-spacing:0.01em;">+ Nuevo proyecto</button>
+      </sc-if>
+      <sc-if value="{{ esClientes }}">
+        <button onClick="{{ nuevoCliente }}" style="border:none;background:#D6197E;color:#fff;border-radius:9px;padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer;letter-spacing:0.01em;">+ Nuevo cliente</button>
+      </sc-if>
+      <sc-if value="{{ esFerias }}">
+        <button onClick="{{ nuevaFeria }}" style="border:none;background:#D6197E;color:#fff;border-radius:9px;padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer;letter-spacing:0.01em;">+ Nueva feria</button>
+      </sc-if>
+      <sc-if value="{{ esProveedores }}">
+        <button onClick="{{ nuevoProveedor }}" style="border:none;background:#D6197E;color:#fff;border-radius:9px;padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer;letter-spacing:0.01em;">+ Nuevo proveedor</button>
+      </sc-if>
+    </div>
+
+    <div style="display:flex;gap:6px;">
+      <button onClick="{{ tabProyectos }}" style="padding:8px 16px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid {{ tpBd }};background:{{ tpBg }};color:{{ tpFg }};">Proyectos</button>
+      <button onClick="{{ tabClientes }}" style="padding:8px 16px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid {{ tcBd }};background:{{ tcBg }};color:{{ tcFg }};">Clientes</button>
+      <button onClick="{{ tabFerias }}" style="padding:8px 16px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid {{ tfBd }};background:{{ tfBg }};color:{{ tfFg }};">Ferias</button>
+      <button onClick="{{ tabProveedores }}" style="padding:8px 16px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid {{ tvBd }};background:{{ tvBg }};color:{{ tvFg }};">Proveedores</button>
+      <div style="flex:1;"></div>
+      <div style="display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #DCD9D2;border-radius:999px;padding:7px 13px;min-width:240px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A867F" stroke-width="2.4" stroke-linecap="round" style="flex:none;"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.5-4.5"></path></svg>
+        <input value="{{ busca }}" onChange="{{ onBusca }}" placeholder="{{ buscaPh }}" style="border:none;background:none;outline:none;font-size:12.5px;color:#17161A;flex:1;min-width:0;"></input>
+        <sc-if value="{{ buscaOn }}">
+          <button onClick="{{ buscaClear }}" style="border:none;background:none;color:#B4B0A8;font-size:13px;cursor:pointer;padding:0 2px;flex:none;line-height:1;">×</button>
+        </sc-if>
+      </div>
+    </div>
+
+    <sc-if value="{{ buscaSinResultados }}">
+      <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;padding:30px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8A867F;">Sin resultados para «{{ busca }}».</div>
+    </sc-if>
+
+    <sc-if value="{{ creating }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:0 10px 30px rgba(23,22,26,0.06);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:16px;font-weight:800;flex:1;">Nuevo proyecto — briefing</div>
+          <button onClick="{{ cerrarForm }}" style="border:none;background:none;color:#8A867F;font-size:18px;cursor:pointer;padding:2px 6px;">×</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <label style="display:flex;flex-direction:column;gap:5px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:#8A867F;">Nombre del proyecto</span>
+            <input value="{{ fNombre }}" onChange="{{ onFNombre }}" placeholder="p. ej. Diasorin — Fitur 2026" style="padding:10px 12px;border:1px solid #DCD9D2;border-radius:7px;font-size:13px;background:#FDFDFC;color:#17161A;outline:none;width:100%;"></input>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:5px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:#8A867F;">Cliente / expositor</span>
+            <div style="display:flex;gap:6px;">
+              <select value="{{ fClienteId }}" onChange="{{ onFCliente }}" style="flex:1;min-width:0;padding:10px 12px;border:1px solid #DCD9D2;border-radius:7px;font-size:13px;background:#FDFDFC;color:#17161A;outline:none;">
+                <option value="">— Elegir cliente —</option>
+                <sc-for list="{{ clienteOptions }}" as="co"><option value="{{ co.v }}">{{ co.label }}</option></sc-for>
+              </select>
+              <button onClick="{{ toggleQuickCliente }}" title="Crear un cliente nuevo" style="border:1px solid #DCD9D2;background:{{ qcBg }};color:{{ qcFg }};border-radius:7px;padding:0 12px;font-size:12px;font-weight:700;cursor:pointer;flex:none;">{{ qcLabel }}</button>
+            </div>
+          </label>
+        </div>
+
+        <sc-if value="{{ quickCliente }}">
+          <div style="border:1px dashed #E7C6D8;background:#FDF7FA;border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+            <sc-for list="{{ quickFields }}" as="qf">
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:#B0447E;">{{ qf.label }}</span>
+                <input value="{{ qf.value }}" onChange="{{ qf.onChange }}" placeholder="{{ qf.ph }}" style="padding:8px 10px;border:1px solid #E7C6D8;border-radius:6px;font-size:12px;background:#fff;color:#17161A;outline:none;width:100%;"></input>
+              </label>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <label style="display:flex;flex-direction:column;gap:5px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:#8A867F;">Feria</span>
+            <div style="display:flex;gap:6px;">
+              <select value="{{ fFeriaId }}" onChange="{{ onFFeria }}" style="flex:1;min-width:0;padding:10px 12px;border:1px solid #DCD9D2;border-radius:7px;font-size:13px;background:#FDFDFC;color:#17161A;outline:none;">
+                <option value="">— Elegir feria (opcional) —</option>
+                <sc-for list="{{ feriaOptions }}" as="fo"><option value="{{ fo.v }}">{{ fo.label }}</option></sc-for>
+              </select>
+            </div>
+          </label>
+          <sc-for list="{{ formCortos }}" as="fc">
+            <label style="display:flex;flex-direction:column;gap:5px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:#8A867F;">{{ fc.label }}</span>
+              <input value="{{ fc.value }}" onChange="{{ fc.onChange }}" placeholder="{{ fc.ph }}" style="padding:10px 12px;border:1px solid #DCD9D2;border-radius:7px;font-size:13px;background:#FDFDFC;color:#17161A;outline:none;width:100%;"></input>
+            </label>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <sc-for list="{{ formLargos }}" as="fl">
+            <label style="display:flex;flex-direction:column;gap:5px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:#8A867F;">{{ fl.label }}</span>
+              <textarea value="{{ fl.value }}" onChange="{{ fl.onChange }}" placeholder="{{ fl.ph }}" style="min-height:74px;resize:vertical;padding:10px 12px;border:1px solid #DCD9D2;border-radius:7px;font-size:12.5px;line-height:1.5;background:#FDFDFC;color:#17161A;outline:none;width:100%;"></textarea>
+            </label>
+          </sc-for>
+        </div>
+        <sc-if value="{{ formError }}">
+          <div style="border:1px solid #E7C6D8;background:#FBF1F6;border-radius:8px;padding:10px 13px;font-size:12px;color:#5A3A4C;">{{ formError }}</div>
+        </sc-if>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button onClick="{{ cerrarForm }}" style="border:1px solid #DCD9D2;background:#fff;border-radius:8px;padding:11px 16px;font-size:12.5px;font-weight:600;cursor:pointer;color:#6E6B66;">Cancelar</button>
+          <button onClick="{{ crearProyecto }}" style="border:none;background:#17161A;color:#fff;border-radius:8px;padding:11px 20px;font-size:12.5px;font-weight:700;cursor:pointer;">Crear proyecto</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ esProyectos }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(23,22,26,0.05);">
+        <div style="display:grid;grid-template-columns:minmax(140px,1.6fr) minmax(80px,1fr) minmax(80px,1fr) minmax(136px,158px) 56px max-content;gap:10px;align-items:center;padding:12px 18px;border-bottom:1px solid #ECEAE5;background:#F7F6F3;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Proyecto</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Cliente</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Feria</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Estado</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Fecha</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;text-align:right;">Documentos</div>
+        </div>
+
+        <sc-for list="{{ rows }}" as="pr" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;border-bottom:1px solid #F1EFEA;">
+          <div onClick="{{ pr.abrirVenta }}" title="Abrir el proyecto" style="display:grid;grid-template-columns:minmax(140px,1.6fr) minmax(80px,1fr) minmax(80px,1fr) minmax(136px,158px) 56px max-content;gap:10px;align-items:center;padding:13px 18px;cursor:pointer;background:#fff;" style-hover="background:#FBFAF8;">
+            <input value="{{ pr.name }}" onChange="{{ pr.onName }}" onClick="{{ pr.stop }}" title="Nombre del proyecto (editable)" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:13.5px;font-weight:700;color:#17161A;outline:none;width:100%;min-width:0;cursor:text;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <select value="{{ pr.clienteId }}" onChange="{{ pr.onCliente }}" onClick="{{ pr.stop }}" title="Cliente asignado" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 4px;font-size:12.5px;color:#55524D;outline:none;width:100%;min-width:0;cursor:pointer;" style-hover="border-color:#DCD9D2;background:#FDFDFC;">
+              <option value="">— sin cliente —</option>
+              <sc-for list="{{ clienteOptions }}" as="co2"><option value="{{ co2.v }}">{{ co2.label }}</option></sc-for>
+            </select>
+            <div style="font-size:12.5px;color:#55524D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ pr.feria }}</div>
+            <select value="{{ pr.estado }}" onChange="{{ pr.onEstado }}" onClick="{{ pr.stop }}" title="Estado del proyecto" style="padding:7px 9px;border:1px solid {{ pr.estBd }};border-radius:999px;font-size:11px;font-weight:700;background:{{ pr.estBg }};color:{{ pr.estFg }};cursor:pointer;outline:none;width:100%;">
+              <sc-for list="{{ estados }}" as="es0"><option value="{{ es0 }}">{{ es0 }}</option></sc-for>
+            </select>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#8A867F;">{{ pr.fecha }}</div>
+            <div onClick="{{ pr.stop }}" style="display:flex;gap:5px;justify-content:flex-end;align-items:center;">
+              <button onClick="{{ pr.onHistToggle }}" title="Historial de estados" style="border:1px solid {{ pr.histBd }};background:{{ pr.histBg }};border-radius:7px;padding:7px 8px;font-size:11px;font-weight:600;cursor:pointer;color:{{ pr.histFg }};white-space:nowrap;font-family:'JetBrains Mono',monospace;">⏱ {{ pr.histCount }}</button>
+              <button onClick="{{ pr.abrirVenta }}" title="Documento de venta" style="border:1px solid #DCD9D2;background:#fff;border-radius:7px;padding:7px 8px;font-size:11px;font-weight:600;cursor:pointer;color:#17161A;white-space:nowrap;">Venta</button>
+              <button onClick="{{ pr.abrirPlanos }}" title="Memoria y planos" style="border:1px solid #DCD9D2;background:#fff;border-radius:7px;padding:7px 8px;font-size:11px;font-weight:600;cursor:pointer;color:#17161A;white-space:nowrap;">Planos</button>
+              <button onClick="{{ pr.onDel }}" title="Eliminar proyecto" style="border:none;background:none;color:{{ pr.delFg }};font-size:15px;cursor:pointer;padding:2px 5px;font-weight:{{ pr.delW }};white-space:nowrap;">{{ pr.delLabel }}</button>
+            </div>
+          </div>
+          <sc-if value="{{ pr.histOpen }}">
+            <div style="display:flex;flex-direction:column;gap:8px;padding:4px 18px 14px;background:#FBFAF8;">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:#8A867F;margin-right:4px;">Historial</span>
+                <sc-for list="{{ pr.histRows }}" as="hr0">
+                  <sc-if value="{{ hr0.flecha }}"><span style="color:#C9C5BC;font-size:11px;">→</span></sc-if>
+                  <span style="display:inline-flex;align-items:center;gap:6px;border:1px solid {{ hr0.bd }};background:{{ hr0.bg }};color:{{ hr0.fg }};border-radius:999px;padding:4px 10px;font-size:10.5px;font-weight:700;">
+                    <span>{{ hr0.estado }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:400;opacity:0.75;">{{ hr0.fecha }}</span>
+                  </span>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:#8A867F;margin-right:4px;">Proveedores</span>
+                <sc-for list="{{ pr.provChips }}" as="pc0">
+                  <span style="display:inline-flex;align-items:center;gap:6px;border:1px solid #DCD9D2;background:#fff;color:#17161A;border-radius:999px;padding:4px 6px 4px 10px;font-size:10.5px;font-weight:600;">
+                    <span>{{ pc0.nombre }}</span>
+                    <sc-if value="{{ pc0.esp }}"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#8A867F;">{{ pc0.especialidad }}</span></sc-if>
+                    <button onClick="{{ pc0.onQuitar }}" title="Quitar proveedor del proyecto" style="border:none;background:none;color:#B4B0A8;font-size:12px;cursor:pointer;padding:0 2px;line-height:1;">×</button>
+                  </span>
+                </sc-for>
+                <select value="" onChange="{{ pr.onAddProv }}" style="border:1px dashed #C9C5BC;background:none;border-radius:999px;padding:4px 8px;font-size:10.5px;font-weight:600;color:#6E6B66;cursor:pointer;outline:none;max-width:170px;">
+                  <option value="">+ añadir proveedor</option>
+                  <sc-for list="{{ pr.provLibres }}" as="pl0"><option value="{{ pl0.v }}">{{ pl0.label }}</option></sc-for>
+                </select>
+              </div>
+            </div>
+          </sc-if>
+          </div>
+        </sc-for>
+
+        <sc-if value="{{ vacio }}">
+          <div style="padding:40px 44px;display:flex;flex-direction:column;gap:18px;align-items:center;">
+            <div style="font-size:15px;font-weight:800;color:#17161A;">Empieza en tres pasos</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;width:100%;max-width:760px;">
+              <div style="border:1px solid #E0DED8;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px;background:#FAF9F7;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.14em;color:#D6197E;font-weight:600;">PASO 1</div>
+                <div style="font-size:13px;font-weight:700;">Da de alta el cliente</div>
+                <div style="font-size:11.5px;color:#6E6B66;line-height:1.55;">Con sus contactos: se reutilizan en el cajetín, el presupuesto y el brief.</div>
+                <button onClick="{{ tabClientes }}" style="align-self:flex-start;border:1px solid #DCD9D2;background:#fff;border-radius:7px;padding:7px 12px;font-size:11px;font-weight:700;cursor:pointer;color:#17161A;">Ir a Clientes</button>
+              </div>
+              <div style="border:1px solid #E0DED8;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px;background:#FAF9F7;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.14em;color:#D6197E;font-weight:600;">PASO 2</div>
+                <div style="font-size:13px;font-weight:700;">Registra la feria</div>
+                <div style="font-size:11.5px;color:#6E6B66;line-height:1.55;">Sube su normativa en PDF y el asistente podrá responder dudas sobre ella.</div>
+                <button onClick="{{ tabFerias }}" style="align-self:flex-start;border:1px solid #DCD9D2;background:#fff;border-radius:7px;padding:7px 12px;font-size:11px;font-weight:700;cursor:pointer;color:#17161A;">Ir a Ferias</button>
+              </div>
+              <div style="border:1px solid #E0DED8;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px;background:#FAF9F7;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.14em;color:#D6197E;font-weight:600;">PASO 3</div>
+                <div style="font-size:13px;font-weight:700;">Crea el proyecto</div>
+                <div style="font-size:11.5px;color:#6E6B66;line-height:1.55;">Asigna cliente y feria, rellena el brief y genera el documento de venta.</div>
+                <button onClick="{{ abrirForm }}" style="align-self:flex-start;border:none;background:#D6197E;color:#fff;border-radius:7px;padding:7px 12px;font-size:11px;font-weight:700;cursor:pointer;">+ Nuevo proyecto</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="font-size:11.5px;color:#8A867F;line-height:1.6;">Pincha sobre una línea para entrar al proyecto. Dentro de cada proyecto tienes su <strong>Documento de venta</strong> y su <strong>Memoria y planos</strong>, siempre asignados al proyecto elegido.</div>
+    </sc-if>
+
+    <sc-if value="{{ esClientes }}">
+      <sc-for list="{{ clientRows }}" as="cr" hint-placeholder-count="2">
+        <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 10px 30px rgba(23,22,26,0.05);">
+          <div style="display:grid;grid-template-columns:minmax(160px,1.6fr) minmax(110px,1fr) 90px max-content;gap:10px;align-items:center;">
+            <input value="{{ cr.nombre }}" onChange="{{ cr.onNombre }}" placeholder="Nombre / empresa" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:15px;font-weight:800;color:#17161A;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <input value="{{ cr.web }}" onChange="{{ cr.onWeb }}" placeholder="Web del expositor" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:12.5px;color:#55524D;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A867F;text-align:right;white-space:nowrap;">{{ cr.nProy }} proy.</div>
+            <button onClick="{{ cr.onDel }}" title="Eliminar cliente" style="border:none;background:none;color:{{ cr.delFg }};font-size:15px;cursor:pointer;padding:2px 5px;font-weight:{{ cr.delW }};white-space:nowrap;">{{ cr.delLabel }}</button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Personas de contacto</div>
+            <sc-for list="{{ cr.contactos }}" as="cc">
+              <div style="display:grid;grid-template-columns:minmax(110px,1.2fr) minmax(90px,1fr) minmax(90px,0.9fr) minmax(110px,1.1fr) max-content;gap:8px;align-items:center;">
+                <input value="{{ cc.nombre }}" onChange="{{ cc.onNombre }}" placeholder="Nombre" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#17161A;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ cc.cargo }}" onChange="{{ cc.onCargo }}" placeholder="Cargo / área" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ cc.telefono }}" onChange="{{ cc.onTelefono }}" placeholder="Teléfono" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ cc.email }}" onChange="{{ cc.onEmail }}" placeholder="Email" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <button onClick="{{ cc.onDel }}" title="Quitar contacto" style="border:none;background:none;color:#B4B0A8;font-size:14px;cursor:pointer;padding:2px 5px;">×</button>
+              </div>
+            </sc-for>
+            <button onClick="{{ cr.addContacto }}" style="align-self:flex-start;border:1px dashed #C9C5BC;background:none;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;color:#6E6B66;">+ Añadir contacto</button>
+          </div>
+
+          <input value="{{ cr.notas }}" onChange="{{ cr.onNotas }}" placeholder="Notas del cliente (sector, preferencias, histórico…)" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:5px 8px;font-size:11.5px;color:#8A867F;outline:none;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;color:#17161A;"></input>
+        </div>
+      </sc-for>
+
+      <sc-if value="{{ clientesVacio }}">
+        <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;padding:44px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8A867F;line-height:1.8;">No hay clientes todavía.<br></br>Crea el primero con «+ Nuevo cliente».</div>
+      </sc-if>
+
+      <div style="font-size:11.5px;color:#8A867F;line-height:1.6;">Todos los campos se editan en línea y se guardan solos. Al crear un proyecto podrás asignarle cualquiera de estos clientes, y sus datos rellenan el brief automáticamente.</div>
+    </sc-if>
+
+    <sc-if value="{{ esProveedores }}">
+      <sc-for list="{{ provRows }}" as="pv" hint-placeholder-count="2">
+        <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 10px 30px rgba(23,22,26,0.05);">
+          <div style="display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(120px,1fr) minmax(100px,1fr) 90px max-content;gap:10px;align-items:center;">
+            <input value="{{ pv.nombre }}" onChange="{{ pv.onNombre }}" placeholder="Nombre / empresa" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:15px;font-weight:800;color:#17161A;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <input value="{{ pv.especialidad }}" onChange="{{ pv.onEspecialidad }}" placeholder="Especialidad (carpintería, gráfica…)" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:12.5px;color:#55524D;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <input value="{{ pv.web }}" onChange="{{ pv.onWeb }}" placeholder="Web" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:12.5px;color:#55524D;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A867F;text-align:right;white-space:nowrap;">{{ pv.nProy }} proy.</div>
+            <button onClick="{{ pv.onDel }}" title="Eliminar proveedor" style="border:none;background:none;color:{{ pv.delFg }};font-size:15px;cursor:pointer;padding:2px 5px;font-weight:{{ pv.delW }};white-space:nowrap;">{{ pv.delLabel }}</button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Personas de contacto</div>
+            <sc-for list="{{ pv.contactos }}" as="vc">
+              <div style="display:grid;grid-template-columns:minmax(110px,1.2fr) minmax(90px,1fr) minmax(90px,0.9fr) minmax(110px,1.1fr) max-content;gap:8px;align-items:center;">
+                <input value="{{ vc.nombre }}" onChange="{{ vc.onNombre }}" placeholder="Nombre" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#17161A;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ vc.cargo }}" onChange="{{ vc.onCargo }}" placeholder="Cargo / área" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ vc.telefono }}" onChange="{{ vc.onTelefono }}" placeholder="Teléfono" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ vc.email }}" onChange="{{ vc.onEmail }}" placeholder="Email" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <button onClick="{{ vc.onDel }}" title="Quitar contacto" style="border:none;background:none;color:#B4B0A8;font-size:14px;cursor:pointer;padding:2px 5px;">×</button>
+              </div>
+            </sc-for>
+            <button onClick="{{ pv.addContacto }}" style="align-self:flex-start;border:1px dashed #C9C5BC;background:none;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;color:#6E6B66;">+ Añadir contacto</button>
+          </div>
+
+          <input value="{{ pv.notas }}" onChange="{{ pv.onNotas }}" placeholder="Notas del proveedor (tarifas, plazos, calidad…)" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:5px 8px;font-size:11.5px;color:#8A867F;outline:none;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;color:#17161A;"></input>
+        </div>
+      </sc-for>
+
+      <sc-if value="{{ provVacio }}">
+        <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;padding:44px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8A867F;line-height:1.8;">No hay proveedores todavía.<br></br>Crea el primero con «+ Nuevo proveedor».</div>
+      </sc-if>
+
+      <div style="font-size:11.5px;color:#8A867F;line-height:1.6;">Asigna proveedores a un proyecto desde la pestaña <strong>Proyectos</strong>: abre el panel ⏱ de la línea del proyecto y usa «+ añadir proveedor».</div>
+    </sc-if>
+
+    <sc-if value="{{ esFerias }}">
+      <sc-for list="{{ feriaRows }}" as="fr" hint-placeholder-count="2">
+        <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 30px rgba(23,22,26,0.05);">
+          <div style="display:grid;grid-template-columns:minmax(140px,1.4fr) minmax(110px,1fr) minmax(90px,0.9fr) minmax(90px,1fr) max-content;gap:10px;align-items:center;">
+            <input value="{{ fr.nombre }}" onChange="{{ fr.onNombre }}" placeholder="Nombre de la feria" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:15px;font-weight:800;color:#17161A;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <input value="{{ fr.recinto }}" onChange="{{ fr.onRecinto }}" placeholder="Recinto / ciudad" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:12.5px;color:#55524D;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <input value="{{ fr.fechas }}" onChange="{{ fr.onFechas }}" placeholder="Fechas" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:12.5px;color:#55524D;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <input value="{{ fr.web }}" onChange="{{ fr.onWeb }}" placeholder="Web de la feria" style="border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 8px;font-size:12.5px;color:#55524D;outline:none;width:100%;min-width:0;" style-hover="border-color:#DCD9D2;background:#FDFDFC;" style-focus="border-color:#D6197E;background:#fff;"></input>
+            <button onClick="{{ fr.onDel }}" title="Eliminar feria" style="border:none;background:none;color:{{ fr.delFg }};font-size:15px;cursor:pointer;padding:2px 5px;font-weight:{{ fr.delW }};white-space:nowrap;">{{ fr.delLabel }}</button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Personas de contacto</div>
+            <sc-for list="{{ fr.contactos }}" as="ct">
+              <div style="display:grid;grid-template-columns:minmax(110px,1.2fr) minmax(90px,1fr) minmax(90px,0.9fr) minmax(110px,1.1fr) max-content;gap:8px;align-items:center;">
+                <input value="{{ ct.nombre }}" onChange="{{ ct.onNombre }}" placeholder="Nombre" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#17161A;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ ct.cargo }}" onChange="{{ ct.onCargo }}" placeholder="Cargo / área" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ ct.telefono }}" onChange="{{ ct.onTelefono }}" placeholder="Teléfono" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <input value="{{ ct.email }}" onChange="{{ ct.onEmail }}" placeholder="Email" style="border:1px solid #EFEDE8;background:#FDFDFC;border-radius:6px;padding:6px 8px;font-size:12px;color:#55524D;outline:none;width:100%;min-width:0;" style-focus="border-color:#D6197E;background:#fff;"></input>
+                <button onClick="{{ ct.onDel }}" title="Quitar contacto" style="border:none;background:none;color:#B4B0A8;font-size:14px;cursor:pointer;padding:2px 5px;">×</button>
+              </div>
+            </sc-for>
+            <button onClick="{{ fr.addContacto }}" style="align-self:flex-start;border:1px dashed #C9C5BC;background:none;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;color:#6E6B66;">+ Añadir contacto</button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#8A867F;">Normativa y documentación (PDF)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+              <sc-for list="{{ fr.docs }}" as="dc0">
+                <div style="display:flex;align-items:center;gap:7px;border:1px solid #E0DED8;background:#F7F6F3;border-radius:8px;padding:7px 10px;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#B0447E" stroke-width="2" stroke-linecap="round" style="flex:none;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>
+                  <button onClick="{{ dc0.onOpen }}" title="Abrir el PDF" style="border:none;background:none;padding:0;font-size:12px;font-weight:600;color:#17161A;cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ dc0.name }}</button>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:{{ dc0.estadoFg }};flex:none;">{{ dc0.estado }}</span>
+                  <button onClick="{{ dc0.onDel }}" title="Eliminar documento" style="border:none;background:none;color:#B4B0A8;font-size:13px;cursor:pointer;padding:0 2px;flex:none;">×</button>
+                </div>
+              </sc-for>
+              <label style="border:1px dashed #C9C5BC;background:none;border-radius:8px;padding:8px 13px;font-size:11.5px;font-weight:600;cursor:pointer;color:#6E6B66;display:inline-flex;align-items:center;gap:6px;">
+                <sc-if value="{{ fr.subiendo }}"><span style="width:11px;height:11px;border:2px solid rgba(214,25,126,0.3);border-top-color:#D6197E;border-radius:50%;display:inline-block;animation:crmspin 0.8s linear infinite;"></span></sc-if>
+                <span>{{ fr.subirLabel }}</span>
+                <input type="file" accept=".pdf" multiple="{{ true }}" onChange="{{ fr.onDocFile }}" style="display:none;"></input>
+              </label>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+
+      <sc-if value="{{ feriasVacio }}">
+        <div style="background:#fff;border:1px solid #E0DED8;border-radius:14px;padding:44px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8A867F;line-height:1.8;">No hay ferias todavía.<br></br>Crea la primera con «+ Nueva feria».</div>
+      </sc-if>
+
+      <div style="font-size:11.5px;color:#8A867F;line-height:1.6;">Sube la normativa en PDF: el texto se extrae automáticamente y el <strong>asistente</strong> (botón de abajo a la derecha) puede responderte cualquier duda usándolo.</div>
+    </sc-if>
+
+  </div>
+
+  <sc-if value="{{ chatOpen }}">
+    <div data-screen-label="Asistente" style="position:fixed;right:22px;bottom:22px;width:410px;max-width:calc(100vw - 44px);height:min(600px,calc(100vh - 60px));background:#fff;border:1px solid #E0DED8;border-radius:16px;box-shadow:0 30px 70px rgba(23,22,26,0.25);display:flex;flex-direction:column;overflow:hidden;z-index:50;">
+      <div style="display:flex;align-items:center;gap:9px;padding:13px 15px;border-bottom:1px solid #ECEAE5;background:#17161A;color:#fff;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="#D6197E" style="flex:none;"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z"></path></svg>
+        <div style="flex:1;display:flex;flex-direction:column;gap:1px;">
+          <div style="font-size:13px;font-weight:700;">Asistente Ready</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:8.5px;color:rgba(255,255,255,0.55);letter-spacing:0.08em;text-transform:uppercase;">Proyectos · clientes · ferias · normativa</div>
+        </div>
+        <select value="{{ chatFeria }}" onChange="{{ onChatFeria }}" title="Ámbito de la documentación" style="max-width:130px;padding:5px 6px;border:1px solid #3A3840;border-radius:6px;font-size:10.5px;background:#26252A;color:#fff;outline:none;">
+          <option value="">Todas las ferias</option>
+          <sc-for list="{{ feriaOptions }}" as="fo2"><option value="{{ fo2.v }}">{{ fo2.label }}</option></sc-for>
+        </select>
+        <button onClick="{{ chatClose }}" style="border:none;background:none;color:rgba(255,255,255,0.7);font-size:16px;cursor:pointer;padding:0 3px;">×</button>
+      </div>
+
+      <div id="chatscroll" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#FAF9F7;">
+        <sc-if value="{{ chatVacio }}">
+          <div style="font-size:12px;color:#8A867F;line-height:1.7;padding:6px 4px;">Pregúntame lo que quieras: normativa de una feria, alturas máximas, plazos de montaje, contactos, estado de proyectos…<br></br><span style="font-family:'JetBrains Mono',monospace;font-size:10px;">«¿Cuál es la altura máxima de construcción en Fitur?»</span></div>
+        </sc-if>
+        <sc-for list="{{ chatMsgs }}" as="cm">
+          <div style="display:flex;justify-content:{{ cm.just }};">
+            <div style="max-width:85%;padding:9px 12px;border-radius:{{ cm.radius }};background:{{ cm.bg }};color:{{ cm.fg }};font-size:12.5px;line-height:1.55;white-space:pre-wrap;border:1px solid {{ cm.bd }};">{{ cm.content }}</div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ chatBusy }}">
+          <div style="display:flex;align-items:center;gap:8px;color:#8A867F;font-size:11.5px;padding:2px 4px;">
+            <span style="width:11px;height:11px;border:2px solid rgba(214,25,126,0.3);border-top-color:#D6197E;border-radius:50%;display:inline-block;animation:crmspin 0.8s linear infinite;"></span>
+            <span>Consultando la documentación…</span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;gap:7px;padding:11px;border-top:1px solid #ECEAE5;background:#fff;">
+        <input value="{{ chatInput }}" onChange="{{ onChatInput }}" onKeyDown="{{ onChatKey }}" placeholder="Escribe tu pregunta…" style="flex:1;min-width:0;padding:10px 12px;border:1px solid #DCD9D2;border-radius:9px;font-size:12.5px;background:#FDFDFC;color:#17161A;outline:none;" style-focus="border-color:#D6197E;"></input>
+        <button onClick="{{ chatSend }}" style="border:none;background:#D6197E;color:#fff;border-radius:9px;padding:0 16px;font-size:12.5px;font-weight:700;cursor:pointer;flex:none;">Enviar</button>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ chatCerrado }}">
+    <button onClick="{{ chatAbrir }}" title="Asistente con acceso a proyectos, clientes, ferias y normativa" style="position:fixed;right:22px;bottom:22px;border:none;background:#17161A;color:#fff;border-radius:999px;padding:13px 19px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 14px 34px rgba(23,22,26,0.3);display:flex;align-items:center;gap:8px;z-index:50;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="#D6197E" style="flex:none;"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z"></path></svg>
+      <span>Asistente</span>
+    </button>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  KEY = 'ready-projects-v1';
+  CKEY = 'ready-clientes-v1';
+  FKEY = 'ready-ferias-v1';
+  ESTADOS = ['Concepto presentado', 'Concepto aprobado', 'Concepto rechazado', 'Presupuesto', 'Memoria y planos'];
+  COLORES = {
+    'Concepto presentado': ['#5A6B8C', '#EEF1F6', '#C9D2E2'],
+    'Concepto aprobado': ['#1F8A5B', '#EAF5EF', '#BFDECE'],
+    'Concepto rechazado': ['#C03A2B', '#F9ECEA', '#E5C3BD'],
+    'Presupuesto': ['#B07A1F', '#F7F1E4', '#E2D2AC'],
+    'Memoria y planos': ['#D6197E', '#FBEAF3', '#EBBBD4'],
+  };
+
+  PKEY = 'ready-proveedores-v1';
+
+  state = {
+    tab: 'proyectos', list: [], clientes: [], ferias: [], proveedores: [],
+    creating: false, form: {}, formError: '', quickCliente: false, quick: {},
+    delPend: null, delPendC: null, delPendF: null, subiendo: null,
+    chatOpen: false, chatMsgs: [], chatInput: '', chatBusy: false, chatFeria: '',
+  };
+
+  read(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+  write(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+  componentDidMount() {
+    this.boot();
+    this._reload = () => this.boot();
+    window.addEventListener('pageshow', this._reload);
+    window.addEventListener('focus', this._reload);
+  }
+  componentWillUnmount() {
+    window.removeEventListener('pageshow', this._reload);
+    window.removeEventListener('focus', this._reload);
+  }
+
+  boot() {
+    let sh = this.read(this.KEY);
+    if (!sh || !Array.isArray(sh.list)) sh = { list: [], current: null };
+    let changed = false;
+    for (const k of ['gencad-projects', 'gencad-venta-projects']) {
+      const m = this.read(k);
+      if (m && Array.isArray(m.list)) {
+        for (const p of m.list) {
+          if (!sh.list.some(x => x.id === p.id)) {
+            sh.list.push({ id: p.id, name: p.name || 'Proyecto', estado: 'Concepto presentado', created: Date.now() });
+            changed = true;
+          }
+        }
+      }
+    }
+    if (changed) this.write(this.KEY, sh);
+    const cl = this.read(this.CKEY);
+    const fe = this.read(this.FKEY);
+    const pv = this.read(this.PKEY);
+    this.setState({ list: sh.list, clientes: (cl && cl.list) || [], ferias: (fe && fe.list) || [], proveedores: (pv && pv.list) || [] });
+  }
+
+  save(list) {
+    const sh = this.read(this.KEY) || { list: [], current: null };
+    sh.list = list;
+    this.write(this.KEY, sh);
+    this.setState({ list });
+  }
+  saveClientes(clientes) { this.write(this.CKEY, { list: clientes }); this.setState({ clientes }); }
+  saveFerias(ferias) { this.write(this.FKEY, { list: ferias }); this.setState({ ferias }); }
+  saveProveedores(proveedores) { this.write(this.PKEY, { list: proveedores }); this.setState({ proveedores }); }
+  updProveedor(id, patch) { this.saveProveedores(this.state.proveedores.map(v => v.id === id ? { ...v, ...patch } : v)); }
+  proveedorById(id) { return this.state.proveedores.find(v => v.id === id) || null; }
+  updCliente(id, patch) { this.saveClientes(this.state.clientes.map(c => c.id === id ? { ...c, ...patch } : c)); }
+  updFeria(id, patch) { this.saveFerias(this.state.ferias.map(f => f.id === id ? { ...f, ...patch } : f)); }
+  clienteById(id) { return this.state.clientes.find(c => c.id === id) || null; }
+  feriaById(id) { return this.state.ferias.find(f => f.id === id) || null; }
+
+  // ---- IndexedDB para los PDF de normativa ----
+  idb() {
+    if (this._idbP) return this._idbP;
+    this._idbP = new Promise((res, rej) => {
+      const rq = indexedDB.open('ready-crm-docs', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('docs');
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+    return this._idbP;
+  }
+  async idbSet(key, val) {
+    try {
+      const db = await this.idb();
+      await new Promise((res, rej) => { const tx = db.transaction('docs', 'readwrite'); tx.objectStore('docs').put(val, key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+    } catch (e) {}
+  }
+  async idbGet(key) {
+    try {
+      const db = await this.idb();
+      return await new Promise((res, rej) => { const rq = db.transaction('docs').objectStore('docs').get(key); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+    } catch (e) { return undefined; }
+  }
+  async idbDel(key) {
+    try {
+      const db = await this.idb();
+      await new Promise((res, rej) => { const tx = db.transaction('docs', 'readwrite'); tx.objectStore('docs').delete(key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+    } catch (e) {}
+  }
+
+  // extraer texto de un PDF con pdf.js
+  async pdfText(buf) {
+    const lib = window.pdfjsLib;
+    if (!lib) return '';
+    try {
+      lib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const pdf = await lib.getDocument({ data: buf }).promise;
+      let out = '';
+      for (let i = 1; i <= Math.min(pdf.numPages, 120); i++) {
+        const page = await pdf.getPage(i);
+        const tc = await page.getTextContent();
+        out += tc.items.map(it => it.str).join(' ') + '\n';
+        if (out.length > 400000) break;
+      }
+      return out.replace(/[ \t]+/g, ' ').trim();
+    } catch (e) { return ''; }
+  }
+
+  async onDocFile(feriaId, ev) {
+    const files = [...(ev.target.files || [])];
+    ev.target.value = '';
+    if (!files.length) return;
+    this.setState({ subiendo: feriaId });
+    for (const file of files) {
+      try {
+        const buf = await file.arrayBuffer();
+        const text = await this.pdfText(buf.slice(0));
+        const docId = 'doc' + Date.now() + Math.floor(Math.random() * 1000);
+        await this.idbSet(docId, { name: file.name, blob: new Blob([buf], { type: 'application/pdf' }), text });
+        const f = this.feriaById(feriaId);
+        if (f) this.updFeria(feriaId, { docs: [...(f.docs || []), { id: docId, name: file.name, chars: text.length }] });
+      } catch (e) {}
+    }
+    this.setState({ subiendo: null });
+  }
+
+  async abrirDoc(docId) {
+    const d = await this.idbGet(docId);
+    if (d && d.blob) window.open(URL.createObjectURL(d.blob), '_blank');
+  }
+
+  // fija el proyecto activo en las tres capas y navega
+  abrir(id, target) {
+    const sh = this.read(this.KEY) || { list: this.state.list, current: null };
+    sh.current = id;
+    this.write(this.KEY, sh);
+    const entry = this.state.list.find(x => x.id === id) || { id, name: 'Proyecto' };
+    for (const k of ['gencad-projects', 'gencad-venta-projects']) {
+      const m = this.read(k) || { list: [], current: null };
+      if (!m.list.some(x => x.id === id)) m.list.push({ id, name: entry.name });
+      m.current = id;
+      this.write(k, m);
+    }
+    window.location.href = target;
+  }
+
+  crear = () => {
+    const f = this.state.form || {};
+    const q = this.state.quick || {};
+    let clienteId = f.clienteId || '';
+    let cliente = this.clienteById(clienteId);
+    if (!cliente && this.state.quickCliente && String(q.nombre || '').trim()) {
+      clienteId = 'c' + Date.now();
+      cliente = { id: clienteId, nombre: q.nombre.trim(), web: q.web || '', contacto: q.contacto || '', email: q.email || '', telefono: q.telefono || '', notas: '', created: Date.now() };
+      this.saveClientes([...this.state.clientes, cliente]);
+    }
+    const feria = this.feriaById(f.feriaId || '');
+    const feriaTxt = feria ? [feria.nombre, feria.recinto, feria.fechas].filter(Boolean).join(' · ') : '';
+    const name = String(f.nombre || '').trim() || (cliente ? cliente.nombre + (feria ? ' — ' + feria.nombre : '') : '');
+    if (!name) { this.setState({ formError: 'Indica el nombre del proyecto o asigna un cliente.' }); return; }
+    const id = 'p' + Date.now();
+    const hoy = new Date().toISOString().slice(0, 10);
+    this.write('gencad-venta-p-' + id, {
+      fase: 'brief', tab: 'laminas',
+      datos: {
+        cliente: cliente ? cliente.nombre : '', web: cliente ? cliente.web : '',
+        feria: feriaTxt, stand: f.stand || '',
+        objetivo: f.objetivo || '', productos: f.productos || '', descripcion: f.descripcion || '', directrices: '',
+      },
+      imagenes: [], slides: [],
+    });
+    this.write('gencad-p-' + id, {
+      project: {
+        empresa: 'Ready Eventos', proyecto: name,
+        subtitulo: 'Proyecto de diseño y montaje de stand', arquitecto: '',
+        contacto: 'Calle Soria, 34 · 28864 Ajalvir (Madrid) · +34 677 437 113 · ready@readyeventos.com',
+        fecha: hoy,
+      },
+      drawings: [], sheets: [], tables: [], anexos: [], seq: 50,
+    });
+    const list = [...this.state.list, { id, name, estado: 'Concepto presentado', clienteId, feriaId: f.feriaId || '', created: Date.now(), hist: [{ e: 'Concepto presentado', t: Date.now() }] }];
+    this.save(list);
+    this.setState({ creating: false, form: {}, quick: {}, quickCliente: false, formError: '' });
+    this.abrir(id, 'Documento de venta.dc.html');
+  };
+
+  ventaDatos(id) {
+    const v = this.read('gencad-venta-p-' + id);
+    return (v && v.datos) || {};
+  }
+
+  asignarCliente(pId, cId) {
+    this.save(this.state.list.map(x => x.id === pId ? { ...x, clienteId: cId } : x));
+    const c = this.clienteById(cId);
+    const key = 'gencad-venta-p-' + pId;
+    const v = this.read(key);
+    if (v && v.datos) {
+      v.datos = { ...v.datos, cliente: c ? c.nombre : '', web: c ? c.web : (v.datos.web || '') };
+      this.write(key, v);
+    }
+  }
+
+  // ---- chatbot con acceso a la documentación ----
+  async chatContext() {
+    const s = this.state;
+    const proyectos = s.list.map(p => ({
+      proyecto: p.name, estado: p.estado,
+      cliente: (this.clienteById(p.clienteId) || {}).nombre || this.ventaDatos(p.id).cliente || '',
+      feria: (this.feriaById(p.feriaId) || {}).nombre || this.ventaDatos(p.id).feria || '',
+      proveedores: (p.provIds || []).map(id => (this.proveedorById(id) || {}).nombre).filter(Boolean),
+    }));
+    const proveedores = s.proveedores.map(v => ({
+      nombre: v.nombre, especialidad: v.especialidad, web: v.web, notas: v.notas,
+      contactos: (v.contactos || []).map(c => ({ nombre: c.nombre, cargo: c.cargo, telefono: c.telefono, email: c.email })),
+    }));
+    const clientes = s.clientes.map(c => ({
+      nombre: c.nombre, web: c.web, notas: c.notas,
+      contactos: (c.contactos && c.contactos.length) ? c.contactos : [{ nombre: c.contacto || '', telefono: c.telefono || '', email: c.email || '' }],
+    }));
+    const ferias = s.ferias.map(f => ({
+      nombre: f.nombre, recinto: f.recinto, fechas: f.fechas, web: f.web,
+      contactos: (f.contactos || []).map(c => ({ nombre: c.nombre, cargo: c.cargo, telefono: c.telefono, email: c.email })),
+      documentos: (f.docs || []).map(d => d.name),
+    }));
+    let docsTxt = '';
+    const scope = s.chatFeria ? s.ferias.filter(f => f.id === s.chatFeria) : s.ferias;
+    let total = 0;
+    for (const f of scope) {
+      for (const d of (f.docs || [])) {
+        if (total > 90000) break;
+        const stored = await this.idbGet(d.id);
+        const t = (stored && stored.text) || '';
+        if (!t) continue;
+        const cut = t.slice(0, 30000);
+        total += cut.length;
+        docsTxt += '\n\n===== NORMATIVA «' + d.name + '» (feria ' + f.nombre + ') =====\n' + cut + (t.length > cut.length ? '\n[…documento truncado…]' : '');
+      }
+    }
+    return 'Eres el asistente interno de Ready Eventos (readyeventos.com), empresa española de diseño, producción y montaje de stands de feria (Grupo IGC, Ajalvir, Madrid). Respondes en español, de forma breve y práctica, a preguntas del equipo sobre sus proyectos, clientes, ferias, proveedores y la normativa adjunta. Formato: texto plano con **negritas** y listas sencillas; nunca tablas Markdown ni bloques de código, salvo que te pidan código. Si la respuesta está en la normativa, cita el documento y, si puedes, el punto o apartado. Si no tienes el dato, dilo claramente.\n\nDATOS DEL CRM:\nPROYECTOS: ' + JSON.stringify(proyectos) + '\nCLIENTES: ' + JSON.stringify(clientes) + '\nFERIAS: ' + JSON.stringify(ferias) + '\nPROVEEDORES: ' + JSON.stringify(proveedores) + (docsTxt ? '\n\nDOCUMENTACIÓN (texto extraído de los PDF):' + docsTxt : '\n\n(No hay PDFs de normativa subidos todavía.)');
+  }
+
+  chatSend = async () => {
+    const q = String(this.state.chatInput || '').trim();
+    if (!q || this.state.chatBusy) return;
+    if (!window.claude || !window.claude.complete) {
+      this.setState({ chatMsgs: [...this.state.chatMsgs, { role: 'user', content: q }, { role: 'assistant', content: 'El asistente de IA no está disponible en este entorno.' }], chatInput: '' });
+      return;
+    }
+    const msgs = [...this.state.chatMsgs, { role: 'user', content: q }];
+    this.setState({ chatMsgs: msgs, chatInput: '', chatBusy: true }, () => this.chatScroll());
+    try {
+      const sys = await this.chatContext();
+      const res = await window.claude.complete({
+        model: 'claude-sonnet-4-5',
+        system: sys,
+        messages: msgs.slice(-12).map(m => ({ role: m.role, content: m.content })),
+        max_tokens: 1500,
+      });
+      this.setState({ chatMsgs: [...msgs, { role: 'assistant', content: String(res) }], chatBusy: false }, () => this.chatScroll());
+    } catch (e) {
+      this.setState({ chatMsgs: [...msgs, { role: 'assistant', content: 'No he podido responder: ' + e.message }], chatBusy: false }, () => this.chatScroll());
+    }
+  };
+
+  // mini-render de Markdown para las burbujas del asistente
+  mdInline(t, keyBase) {
+    const parts = [];
+    let rest = String(t), i = 0;
+    const re = /\*\*([^*]+)\*\*|`([^`\n]+)`/;
+    while (true) {
+      const m = re.exec(rest);
+      if (!m) { if (rest) parts.push(rest); break; }
+      if (m.index) parts.push(rest.slice(0, m.index));
+      if (m[1] !== undefined) parts.push(React.createElement('strong', { key: keyBase + '-' + i }, m[1]));
+      else parts.push(React.createElement('code', { key: keyBase + '-' + i, style: { background: 'rgba(0,0,0,0.08)', borderRadius: 3, padding: '0 4px', fontSize: '11px', fontFamily: "'JetBrains Mono',monospace" } }, m[2]));
+      rest = rest.slice(m.index + m[0].length);
+      i++;
+    }
+    return parts;
+  }
+
+  mdRender(text) {
+    const clean = String(text || '').replace(/^#{1,5}\s*(.+)$/gm, '**$1**');
+    const chunks = clean.split(/```[a-zA-Z]*\n?/);
+    const out = [];
+    chunks.forEach((ch, ci) => {
+      if (ci % 2 === 1) {
+        out.push(React.createElement('pre', {
+          key: 'cb' + ci,
+          style: { background: 'rgba(0,0,0,0.06)', borderRadius: 6, padding: '8px 10px', margin: '4px 0', fontSize: '11px', fontFamily: "'JetBrains Mono',monospace", whiteSpace: 'pre-wrap', overflowX: 'auto' },
+        }, ch.replace(/\n$/, '')));
+      } else if (ch) {
+        out.push(React.createElement('span', { key: 'tx' + ci }, this.mdInline(ch, 'tx' + ci)));
+      }
+    });
+    return React.createElement('span', null, out);
+  }
+
+  chatScroll() {
+    const el = document.getElementById('chatscroll');
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const ff = (key, label, ph) => ({
+      label, ph: ph || '', value: (s.form || {})[key] || '',
+      onChange: e => this.setState({ form: { ...this.state.form, [key]: e.target.value }, formError: '' }),
+    });
+    const qf = (key, label, ph) => ({
+      label, ph: ph || '', value: (s.quick || {})[key] || '',
+      onChange: e => this.setState({ quick: { ...this.state.quick, [key]: e.target.value }, formError: '' }),
+    });
+    const clienteOptions = s.clientes.map(c => ({ v: c.id, label: c.nombre || '(sin nombre)' }));
+    const feriaOptions = s.ferias.map(f => ({ v: f.id, label: f.nombre || '(sin nombre)' }));
+
+    // buscador: filtra la pestaña activa (sin acentos, sin mayúsculas)
+    const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const q = norm(s.busca);
+    const matchProy = p => {
+      if (!q) return true;
+      const cli = this.clienteById(p.clienteId);
+      const fer = this.feriaById(p.feriaId);
+      const dat = this.ventaDatos(p.id);
+      return norm([p.name, p.estado, cli && cli.nombre, fer && fer.nombre, dat.cliente, dat.feria].join(' ')).includes(q);
+    };
+    const matchCli = c => !q || norm([c.nombre, c.web, c.notas, ...((c.contactos || []).map(x => [x.nombre, x.email, x.telefono, x.cargo].join(' '))), c.contacto, c.email, c.telefono].join(' ')).includes(q);
+    const matchFer = f => !q || norm([f.nombre, f.recinto, f.fechas, f.web, ...((f.contactos || []).map(x => [x.nombre, x.cargo, x.email].join(' '))), ...((f.docs || []).map(d => d.name))].join(' ')).includes(q);
+    const matchProv = v => !q || norm([v.nombre, v.especialidad, v.web, v.notas, ...((v.contactos || []).map(x => [x.nombre, x.cargo, x.email, x.telefono].join(' ')))].join(' ')).includes(q);
+
+    const rows = s.list.filter(matchProy).map(p => {
+      const col = this.COLORES[p.estado] || this.COLORES['Concepto presentado'];
+      const pendDel = s.delPend === p.id;
+      const feria = this.feriaById(p.feriaId);
+      const hist = (p.hist && p.hist.length) ? p.hist : [{ e: p.estado || 'Concepto presentado', t: p.created || Date.now() }];
+      const histOpen = s.histOpen === p.id;
+      const fmtH = t => new Date(t).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' });
+      return {
+        histOpen,
+        histCount: String(hist.length),
+        histBd: histOpen ? '#17161A' : '#DCD9D2',
+        histBg: histOpen ? '#17161A' : '#fff',
+        histFg: histOpen ? '#fff' : '#8A867F',
+        onHistToggle: e => { e.stopPropagation(); this.setState({ histOpen: histOpen ? null : p.id }); },
+        histRows: hist.map((h, i) => {
+          const c = this.COLORES[h.e] || this.COLORES['Concepto presentado'];
+          return { estado: h.e, fecha: fmtH(h.t), fg: c[0], bg: c[1], bd: c[2], flecha: i > 0 };
+        }),
+        provChips: (p.provIds || []).map(vid => {
+          const v = this.proveedorById(vid);
+          return {
+            nombre: (v && v.nombre) || '(eliminado)',
+            especialidad: (v && v.especialidad) || '',
+            esp: !!(v && v.especialidad),
+            onQuitar: e => { e.stopPropagation(); this.save(this.state.list.map(x => x.id === p.id ? { ...x, provIds: (x.provIds || []).filter(z => z !== vid) } : x)); },
+          };
+        }),
+        provLibres: s.proveedores.filter(v => !(p.provIds || []).includes(v.id)).map(v => ({ v: v.id, label: (v.nombre || '(sin nombre)') + (v.especialidad ? ' — ' + v.especialidad : '') })),
+        onAddProv: e => {
+          const vid = e.target.value;
+          if (!vid) return;
+          e.target.value = '';
+          this.save(this.state.list.map(x => x.id === p.id ? { ...x, provIds: [...(x.provIds || []), vid] } : x));
+        },
+        name: p.name,
+        onName: e => {
+          const name = e.target.value;
+          this.save(this.state.list.map(x => x.id === p.id ? { ...x, name } : x));
+          for (const k of ['gencad-projects', 'gencad-venta-projects']) {
+            const m = this.read(k);
+            if (m && m.list) { m.list = m.list.map(x => x.id === p.id ? { ...x, name } : x); this.write(k, m); }
+          }
+        },
+        clienteId: p.clienteId || '',
+        onCliente: e => this.asignarCliente(p.id, e.target.value),
+        feria: (feria && feria.nombre) || this.ventaDatos(p.id).feria || '—',
+        estado: p.estado || 'Concepto presentado',
+        estFg: col[0], estBg: col[1], estBd: col[2],
+        onEstado: e => {
+          const nuevo = e.target.value;
+          this.save(this.state.list.map(x => {
+            if (x.id !== p.id) return x;
+            const h = (x.hist && x.hist.length) ? x.hist : [{ e: x.estado || 'Concepto presentado', t: x.created || Date.now() }];
+            return { ...x, estado: nuevo, hist: [...h, { e: nuevo, t: Date.now() }] };
+          }));
+        },
+        fecha: p.created ? new Date(p.created).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—',
+        abrirVenta: () => this.abrir(p.id, 'Documento de venta.dc.html'),
+        abrirPlanos: () => this.abrir(p.id, 'Generador CAD.dc.html'),
+        stop: e => e.stopPropagation(),
+        delLabel: pendDel ? '¿Seguro?' : '×',
+        delFg: pendDel ? '#C03A2B' : '#B4B0A8',
+        delW: pendDel ? '700' : '400',
+        onDel: e => {
+          e.stopPropagation();
+          if (!pendDel) { this.setState({ delPend: p.id }); setTimeout(() => { if (this.state.delPend === p.id) this.setState({ delPend: null }); }, 3000); return; }
+          try { localStorage.removeItem('gencad-p-' + p.id); localStorage.removeItem('gencad-venta-p-' + p.id); } catch (err) {}
+          for (const k of ['gencad-projects', 'gencad-venta-projects']) {
+            const m = this.read(k);
+            if (m && m.list) {
+              m.list = m.list.filter(x => x.id !== p.id);
+              if (m.current === p.id) m.current = m.list.length ? m.list[0].id : null;
+              this.write(k, m);
+            }
+          }
+          this.setState({ delPend: null });
+          this.save(this.state.list.filter(x => x.id !== p.id));
+        },
+      };
+    });
+
+    const clientRows = s.clientes.filter(matchCli).map(c => {
+      const nProy = s.list.filter(p => p.clienteId === c.id).length;
+      const pendDel = s.delPendC === c.id;
+      const upd = key => e => this.updCliente(c.id, { [key]: e.target.value });
+      // migración: los campos sueltos antiguos pasan a ser el primer contacto
+      const contactos = (c.contactos && c.contactos.length)
+        ? c.contactos
+        : ((c.contacto || c.email || c.telefono) ? [{ nombre: c.contacto || '', cargo: '', telefono: c.telefono || '', email: c.email || '' }] : [{ nombre: '', cargo: '', telefono: '', email: '' }]);
+      const updCt = (i, key) => e => this.updCliente(c.id, { contactos: contactos.map((x, j) => j === i ? { ...x, [key]: e.target.value } : x), contacto: '', email: '', telefono: '' });
+      return {
+        nombre: c.nombre || '', onNombre: upd('nombre'),
+        web: c.web || '', onWeb: upd('web'),
+        contactos: contactos.map((cc, i) => ({
+          nombre: cc.nombre || '', onNombre: updCt(i, 'nombre'),
+          cargo: cc.cargo || '', onCargo: updCt(i, 'cargo'),
+          telefono: cc.telefono || '', onTelefono: updCt(i, 'telefono'),
+          email: cc.email || '', onEmail: updCt(i, 'email'),
+          onDel: () => this.updCliente(c.id, { contactos: contactos.filter((x, j) => j !== i), contacto: '', email: '', telefono: '' }),
+        })),
+        addContacto: () => this.updCliente(c.id, { contactos: [...contactos, { nombre: '', cargo: '', telefono: '', email: '' }], contacto: '', email: '', telefono: '' }),
+        notas: c.notas || '', onNotas: upd('notas'),
+        nProy: String(nProy),
+        delLabel: pendDel ? '¿Seguro?' : '×',
+        delFg: pendDel ? '#C03A2B' : '#B4B0A8',
+        delW: pendDel ? '700' : '400',
+        onDel: () => {
+          if (!pendDel) { this.setState({ delPendC: c.id }); setTimeout(() => { if (this.state.delPendC === c.id) this.setState({ delPendC: null }); }, 3000); return; }
+          this.setState({ delPendC: null });
+          this.save(this.state.list.map(p => p.clienteId === c.id ? { ...p, clienteId: '' } : p));
+          this.saveClientes(this.state.clientes.filter(x => x.id !== c.id));
+        },
+      };
+    });
+
+    const provRows = s.proveedores.filter(matchProv).map(v => {
+      const nProy = s.list.filter(p => (p.provIds || []).includes(v.id)).length;
+      const pendDel = s.delPendV === v.id;
+      const upd = key => e => this.updProveedor(v.id, { [key]: e.target.value });
+      const contactos = (v.contactos && v.contactos.length) ? v.contactos : [{ nombre: '', cargo: '', telefono: '', email: '' }];
+      const updCt = (i, key) => e => this.updProveedor(v.id, { contactos: contactos.map((x, j) => j === i ? { ...x, [key]: e.target.value } : x) });
+      return {
+        nombre: v.nombre || '', onNombre: upd('nombre'),
+        especialidad: v.especialidad || '', onEspecialidad: upd('especialidad'),
+        web: v.web || '', onWeb: upd('web'),
+        notas: v.notas || '', onNotas: upd('notas'),
+        nProy: String(nProy),
+        contactos: contactos.map((cc, i) => ({
+          nombre: cc.nombre || '', onNombre: updCt(i, 'nombre'),
+          cargo: cc.cargo || '', onCargo: updCt(i, 'cargo'),
+          telefono: cc.telefono || '', onTelefono: updCt(i, 'telefono'),
+          email: cc.email || '', onEmail: updCt(i, 'email'),
+          onDel: () => this.updProveedor(v.id, { contactos: contactos.filter((x, j) => j !== i) }),
+        })),
+        addContacto: () => this.updProveedor(v.id, { contactos: [...contactos, { nombre: '', cargo: '', telefono: '', email: '' }] }),
+        delLabel: pendDel ? '¿Seguro?' : '×',
+        delFg: pendDel ? '#C03A2B' : '#B4B0A8',
+        delW: pendDel ? '700' : '400',
+        onDel: () => {
+          if (!pendDel) { this.setState({ delPendV: v.id }); setTimeout(() => { if (this.state.delPendV === v.id) this.setState({ delPendV: null }); }, 3000); return; }
+          this.setState({ delPendV: null });
+          this.save(this.state.list.map(p => ({ ...p, provIds: (p.provIds || []).filter(z => z !== v.id) })));
+          this.saveProveedores(this.state.proveedores.filter(x => x.id !== v.id));
+        },
+      };
+    });
+
+    const feriaRows = s.ferias.filter(matchFer).map(f => {
+      const pendDel = s.delPendF === f.id;
+      const upd = key => e => this.updFeria(f.id, { [key]: e.target.value });
+      const updCt = (i, key) => e => this.updFeria(f.id, { contactos: (f.contactos || []).map((c, j) => j === i ? { ...c, [key]: e.target.value } : c) });
+      return {
+        nombre: f.nombre || '', onNombre: upd('nombre'),
+        recinto: f.recinto || '', onRecinto: upd('recinto'),
+        fechas: f.fechas || '', onFechas: upd('fechas'),
+        web: f.web || '', onWeb: upd('web'),
+        contactos: (f.contactos || []).map((c, i) => ({
+          nombre: c.nombre || '', onNombre: updCt(i, 'nombre'),
+          cargo: c.cargo || '', onCargo: updCt(i, 'cargo'),
+          telefono: c.telefono || '', onTelefono: updCt(i, 'telefono'),
+          email: c.email || '', onEmail: updCt(i, 'email'),
+          onDel: () => this.updFeria(f.id, { contactos: (f.contactos || []).filter((x, j) => j !== i) }),
+        })),
+        addContacto: () => this.updFeria(f.id, { contactos: [...(f.contactos || []), { nombre: '', cargo: '', telefono: '', email: '' }] }),
+        docs: (f.docs || []).map(d => ({
+          name: d.name,
+          estado: d.chars > 200 ? 'texto OK' : 'sin texto',
+          estadoFg: d.chars > 200 ? '#1F8A5B' : '#B07A1F',
+          onOpen: () => this.abrirDoc(d.id),
+          onDel: () => { this.idbDel(d.id); this.updFeria(f.id, { docs: (f.docs || []).filter(x => x.id !== d.id) }); },
+        })),
+        subiendo: s.subiendo === f.id,
+        subirLabel: s.subiendo === f.id ? 'Extrayendo texto…' : '+ Subir PDF de normativa',
+        onDocFile: ev => this.onDocFile(f.id, ev),
+        delLabel: pendDel ? '¿Seguro?' : '×',
+        delFg: pendDel ? '#C03A2B' : '#B4B0A8',
+        delW: pendDel ? '700' : '400',
+        onDel: () => {
+          if (!pendDel) { this.setState({ delPendF: f.id }); setTimeout(() => { if (this.state.delPendF === f.id) this.setState({ delPendF: null }); }, 3000); return; }
+          this.setState({ delPendF: null });
+          for (const d of (f.docs || [])) this.idbDel(d.id);
+          this.save(this.state.list.map(p => p.feriaId === f.id ? { ...p, feriaId: '' } : p));
+          this.saveFerias(this.state.ferias.filter(x => x.id !== f.id));
+        },
+      };
+    });
+
+    const tabBtn = on => ({ bd: on ? '#17161A' : '#D8D5CE', bg: on ? '#17161A' : 'transparent', fg: on ? '#FFFFFF' : '#6E6B66' });
+    const tp = tabBtn(s.tab === 'proyectos'), tc = tabBtn(s.tab === 'clientes'), tf = tabBtn(s.tab === 'ferias'), tv = tabBtn(s.tab === 'proveedores');
+
+    return {
+      tvBd: tv.bd, tvBg: tv.bg, tvFg: tv.fg,
+      titulo: s.tab === 'clientes' ? 'Clientes' : s.tab === 'ferias' ? 'Ferias' : s.tab === 'proveedores' ? 'Proveedores' : 'Proyectos',
+      esProyectos: s.tab === 'proyectos',
+      esClientes: s.tab === 'clientes',
+      esFerias: s.tab === 'ferias',
+      tabProyectos: () => this.setState({ tab: 'proyectos' }),
+      tabClientes: () => this.setState({ tab: 'clientes', creating: false }),
+      tabFerias: () => this.setState({ tab: 'ferias', creating: false }),
+      tabProveedores: () => this.setState({ tab: 'proveedores', creating: false }),
+      esProveedores: s.tab === 'proveedores',
+      provRows,
+      provVacio: provRows.length === 0,
+      nuevoProveedor: () => this.saveProveedores([...this.state.proveedores, { id: 'v' + Date.now(), nombre: '', especialidad: '', web: '', notas: '', contactos: [{ nombre: '', cargo: '', telefono: '', email: '' }], created: Date.now() }]),
+      // buscador
+      busca: s.busca || '',
+      onBusca: e => this.setState({ busca: e.target.value }),
+      buscaClear: () => this.setState({ busca: '' }),
+      buscaOn: !!q,
+      buscaPh: s.tab === 'clientes' ? 'Buscar clientes…' : s.tab === 'ferias' ? 'Buscar ferias…' : s.tab === 'proveedores' ? 'Buscar proveedores…' : 'Buscar proyectos…',
+      buscaSinResultados: !!q && ((s.tab === 'proyectos' && rows.length === 0 && s.list.length > 0) || (s.tab === 'clientes' && clientRows.length === 0 && s.clientes.length > 0) || (s.tab === 'ferias' && feriaRows.length === 0 && s.ferias.length > 0) || (s.tab === 'proveedores' && provRows.length === 0 && s.proveedores.length > 0)),
+      tpBd: tp.bd, tpBg: tp.bg, tpFg: tp.fg,
+      tcBd: tc.bd, tcBg: tc.bg, tcFg: tc.fg,
+      tfBd: tf.bd, tfBg: tf.bg, tfFg: tf.fg,
+      rows, vacio: rows.length === 0,
+      estados: this.ESTADOS,
+      clienteOptions, feriaOptions,
+      clientRows, clientesVacio: clientRows.length === 0,
+      feriaRows, feriasVacio: feriaRows.length === 0,
+      nuevoCliente: () => this.saveClientes([...this.state.clientes, { id: 'c' + Date.now(), nombre: '', web: '', contacto: '', email: '', telefono: '', notas: '', created: Date.now() }]),
+      nuevaFeria: () => this.saveFerias([...this.state.ferias, { id: 'f' + Date.now(), nombre: '', recinto: '', fechas: '', web: '', contactos: [{ nombre: '', cargo: '', telefono: '', email: '' }], docs: [], created: Date.now() }]),
+      creating: s.creating,
+      abrirForm: () => this.setState({ creating: true, formError: '' }),
+      cerrarForm: () => this.setState({ creating: false, formError: '' }),
+      formError: s.formError,
+      crearProyecto: this.crear,
+      fNombre: (s.form || {}).nombre || '',
+      onFNombre: e => this.setState({ form: { ...this.state.form, nombre: e.target.value }, formError: '' }),
+      fClienteId: (s.form || {}).clienteId || '',
+      onFCliente: e => this.setState({ form: { ...this.state.form, clienteId: e.target.value }, quickCliente: false, formError: '' }),
+      fFeriaId: (s.form || {}).feriaId || '',
+      onFFeria: e => this.setState({ form: { ...this.state.form, feriaId: e.target.value }, formError: '' }),
+      quickCliente: s.quickCliente,
+      toggleQuickCliente: () => this.setState({ quickCliente: !s.quickCliente, form: { ...this.state.form, clienteId: '' } }),
+      qcLabel: s.quickCliente ? 'Cancelar' : '+ Nuevo',
+      qcBg: s.quickCliente ? '#17161A' : '#fff',
+      qcFg: s.quickCliente ? '#fff' : '#17161A',
+      quickFields: [
+        qf('nombre', 'Nombre / empresa', 'p. ej. Diasorin'),
+        qf('web', 'Web', 'diasorin.com'),
+        qf('email', 'Email', 'hola@…'),
+        qf('telefono', 'Teléfono', '+34 …'),
+      ],
+      formCortos: [
+        ff('stand', 'Stand (medidas y frentes)', 'p. ej. Stand 6×3, dos frentes abiertos'),
+      ],
+      formLargos: [
+        ff('objetivo', 'Objetivo del proyecto', 'Notoriedad, captación de leads, presentación de producto…'),
+        ff('productos', 'Productos que se exponen', 'Qué se expone y qué hay que destacar de cada producto'),
+        ff('descripcion', 'Descripción del stand', 'Materiales, alturas, mostrador, almacén, iluminación, pantallas…'),
+      ],
+      // ---- chat ----
+      chatOpen: s.chatOpen,
+      chatCerrado: !s.chatOpen,
+      chatAbrir: () => this.setState({ chatOpen: true }, () => this.chatScroll()),
+      chatClose: () => this.setState({ chatOpen: false }),
+      chatVacio: s.chatMsgs.length === 0,
+      chatMsgs: s.chatMsgs.map(m => ({
+        content: m.role === 'assistant' ? this.mdRender(m.content) : m.content,
+        just: m.role === 'user' ? 'flex-end' : 'flex-start',
+        bg: m.role === 'user' ? '#17161A' : '#FFFFFF',
+        fg: m.role === 'user' ? '#FFFFFF' : '#17161A',
+        bd: m.role === 'user' ? '#17161A' : '#E0DED8',
+        radius: m.role === 'user' ? '12px 12px 3px 12px' : '12px 12px 12px 3px',
+      })),
+      chatBusy: s.chatBusy,
+      chatInput: s.chatInput,
+      onChatInput: e => this.setState({ chatInput: e.target.value }),
+      onChatKey: e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.chatSend(); } },
+      chatSend: this.chatSend,
+      chatFeria: s.chatFeria,
+      onChatFeria: e => this.setState({ chatFeria: e.target.value }),
+    };
+  }
+}
+</script>
+</body>
+</html>
