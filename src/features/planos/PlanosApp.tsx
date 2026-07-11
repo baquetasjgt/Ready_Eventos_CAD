@@ -7,6 +7,7 @@ import type { Model } from './cad-lib'
 import * as xl from './xlsx-lite'
 import { GLYPH, glyphEl, LEYSYMS, SIM_OPTIONS } from './glyphs'
 import { renderOverlay } from './overlay'
+import PlanosView from './PlanosView'
 import type {
   Doc,
   Drawing,
@@ -1686,6 +1687,3 @@ export default function PlanosApp() {
     />
   )
 }
-
-// The view is defined in PlanosView.tsx and receives the full controller API.
-import PlanosView from './PlanosView'
