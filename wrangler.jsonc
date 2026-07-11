@@ -1,0 +1,11 @@
+{
+  // Despliegue de la web estática (Vite SPA) como Cloudflare Worker con assets.
+  // El build (`npm run build`) genera ./dist y `wrangler deploy` lo publica.
+  "name": "ready-eventos-cad",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./dist",
+    // Sirve index.html para las rutas del cliente (/venta/:id, /planos/:id…)
+    "not_found_handling": "single-page-application"
+  }
+}
