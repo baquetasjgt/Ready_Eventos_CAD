@@ -5,6 +5,7 @@ import './index.css'
 import Inicio from './pages/Inicio'
 import Venta from './pages/Venta'
 import Planos from './pages/Planos'
+import AuthGate from './features/auth/AuthGate'
 
 const router = createBrowserRouter([
   { path: '/', element: <Inicio /> },
@@ -14,6 +15,8 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <AuthGate>
+      <RouterProvider router={router} />
+    </AuthGate>
   </React.StrictMode>,
 )

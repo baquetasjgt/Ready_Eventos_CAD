@@ -88,11 +88,33 @@ export function read<T = any>(key: string): T | null {
   }
 }
 
+// Optional write-through hook installed by the sync engine (src/lib/sync.ts).
+// Lets local writes mirror to Supabase without the components knowing about it.
+let writeHook: ((key: string, value: unknown) => void) | null = null
+export function setWriteHook(fn: ((key: string, value: unknown) => void) | null): void {
+  writeHook = fn
+}
+
 export function write(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {
     /* quota — ignore, matches prototype */
+  }
+  try {
+    writeHook?.(key, value)
+  } catch {
+    /* sync errors must never break local writes */
+  }
+}
+
+// Write to localStorage only, bypassing the sync hook. Used by the sync engine
+// when hydrating local state from the cloud (so a pull doesn't echo back as a push).
+export function writeLocal(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* ignore */
   }
 }
 
