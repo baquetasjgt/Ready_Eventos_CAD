@@ -1,1 +1,0 @@
-{"root":["./src/main.tsx","./src/vite-env.d.ts","./src/features/inicio/ChatAssistant.tsx","./src/features/inicio/md.tsx","./src/lib/claude.ts","./src/lib/pdf.ts","./src/lib/storage.ts","./src/lib/theme.ts","./src/pages/DocShell.tsx","./src/pages/Inicio.tsx","./src/pages/Planos.tsx","./src/pages/Venta.tsx"],"version":"5.9.3"}

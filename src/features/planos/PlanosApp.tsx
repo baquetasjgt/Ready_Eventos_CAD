@@ -185,51 +185,53 @@ export default function PlanosApp() {
     },
     [projectId, buildPayload],
   )
-  const schedulePersist = useCallback(
-    (d: Doc) => {
-      setSaving(true)
-      clearTimeout(persistT.current)
-      persistT.current = setTimeout(() => persistNow(d), 500)
-    },
-    [persistNow],
-  )
+  const schedulePersist = useCallback((_d: Doc) => {
+    /* persistence is handled by the effect watching `doc`; kept for API parity */
+  }, [])
+
+  // Debounced persistence: whenever the document changes (after load), write it.
+  const persistReady = useRef(false)
+  useEffect(() => {
+    if (!ready) return
+    if (!persistReady.current) {
+      persistReady.current = true
+      return
+    }
+    setSaving(true)
+    clearTimeout(persistT.current)
+    persistT.current = setTimeout(() => persistNow(doc), 500)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, zoom, tab, ready])
 
   // ---- doc mutation with undo/redo ----
-  const up = useCallback(
-    (patch: Partial<Doc>) => {
-      setDocState((prev) => {
-        undoRef.current.push(prev)
-        if (undoRef.current.length > 30) undoRef.current.shift()
-        redoRef.current = []
-        const next = { ...prev, ...patch }
-        schedulePersist(next)
-        return next
-      })
-    },
-    [schedulePersist],
-  )
+  const up = useCallback((patch: Partial<Doc>) => {
+    setDocState((prev) => {
+      undoRef.current.push(prev)
+      if (undoRef.current.length > 30) undoRef.current.shift()
+      redoRef.current = []
+      return { ...prev, ...patch }
+    })
+  }, [])
   const live = useCallback((patch: Partial<Doc>) => setDocState((prev) => ({ ...prev, ...patch })), [])
   const undo = useCallback(() => {
     setDocState((prev) => {
       const p = undoRef.current.pop()
       if (!p) return prev
       redoRef.current.push(prev)
-      schedulePersist(p)
       return p
     })
     setNoteSel(null)
     setZoneSel(null)
     setSketchSel(null)
-  }, [schedulePersist])
+  }, [])
   const redo = useCallback(() => {
     setDocState((prev) => {
       const n = redoRef.current.pop()
       if (!n) return prev
       undoRef.current.push(prev)
-      schedulePersist(n)
       return n
     })
-  }, [schedulePersist])
+  }, [])
 
   const toast = useCallback((msg: string, undoable?: boolean) => {
     setNotice(msg)
@@ -1588,7 +1590,7 @@ export default function PlanosApp() {
       tab={tab}
       setTab={setTab}
       zoom={zoom}
-      setZoom={(z) => setZoom(z)}
+      setZoom={(z: number) => setZoom(z)}
       vista={vista}
       setVista={setVista}
       notice={notice}

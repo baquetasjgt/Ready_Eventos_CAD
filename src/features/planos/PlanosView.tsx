@@ -26,6 +26,15 @@ import {
   saveNoteLib,
 } from './helpers'
 
+const TABS = [
+  { id: 'proyecto', label: 'Proyecto' },
+  { id: 'planos', label: 'Planos' },
+  { id: 'leyendas', label: 'Leyendas' },
+  { id: 'memoria', label: 'Memoria' },
+  { id: 'tablas', label: 'Tablas' },
+  { id: 'anexos', label: 'Anexos' },
+]
+
 // UI styling constants
 const border = '#E0DED8'
 const fieldBd = '#DCD9D2'

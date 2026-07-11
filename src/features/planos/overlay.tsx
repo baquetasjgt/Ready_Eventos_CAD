@@ -228,8 +228,8 @@ export function renderOverlay(
   })
   if (s.sketchGhost && s.sketchGhost.shId === sh.id) {
     const g0 = s.sketchGhost
-    const gst: React.SVGProps<any> = {
-      'data-noprint': '1' as any,
+    const gst: any = {
+      'data-noprint': '1',
       stroke: acc,
       strokeWidth: du(0.3),
       fill: 'none',

@@ -3,7 +3,7 @@
 
 async function inflateRaw(u8: Uint8Array): Promise<Uint8Array> {
   const ds = new (window as any).DecompressionStream('deflate-raw')
-  const stream = new Blob([u8]).stream().pipeThrough(ds)
+  const stream = new Blob([u8 as any]).stream().pipeThrough(ds)
   const buf = await new Response(stream).arrayBuffer()
   return new Uint8Array(buf)
 }
