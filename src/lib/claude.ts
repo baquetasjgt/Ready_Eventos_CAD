@@ -1,13 +1,18 @@
-// Client-side wrapper around the Anthropic Messages API. Replaces the
-// prototype's `window.claude.complete(...)` shim with a real call.
+// AI text generation. Targets Google's Gemini API (model gemini-3.5-flash).
 //
-// The API key is read from the VITE_ANTHROPIC_API_KEY env var (see .env.example).
-// It is intentionally left unset by default — add your own key locally, or move
-// this call behind a small server proxy before shipping to production, since a
-// browser-exposed key is visible to anyone using the app.
+// The module keeps the name/signature (`complete` / `hasApiKey`) that the rest
+// of the app already imports, so switching providers is a one-file change.
+//
+// The API key is read from VITE_GEMINI_API_KEY (see .env.example). It is left
+// unset in the repo; add your own key in a local .env. A browser-exposed key is
+// visible to end users, so move this call behind a server proxy before shipping
+// to production.
 
-const API_URL = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-opus-4-8'
+const MODEL = 'gemini-3.5-flash'
+const endpoint = (model: string, key: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
+    key,
+  )}`
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -22,50 +27,55 @@ export interface CompleteOptions {
 }
 
 export function hasApiKey(): boolean {
-  return !!import.meta.env.VITE_ANTHROPIC_API_KEY
+  return !!import.meta.env.VITE_GEMINI_API_KEY
 }
 
-// Returns the assistant's text. Throws on transport/auth errors so callers can
-// surface a friendly message, matching the prototype's behaviour.
+// Returns the model's text. Throws on transport/auth/safety errors so callers
+// can surface a friendly message, matching the prototype's behaviour.
 export async function complete(opts: CompleteOptions): Promise<string> {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
   if (!apiKey) {
     throw new Error(
-      'El asistente de IA no está disponible: falta la clave de API (VITE_ANTHROPIC_API_KEY).',
+      'El asistente de IA no está disponible: falta la clave de API (VITE_GEMINI_API_KEY).',
     )
   }
 
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: opts.model || MODEL,
-      max_tokens: opts.maxTokens ?? 1500,
-      ...(opts.system ? { system: opts.system } : {}),
-      messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
-    }),
-  })
-
-  if (!res.ok) {
-    let detail = ''
-    try {
-      const j = await res.json()
-      detail = j?.error?.message || ''
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail || `Error de la API (${res.status}).`)
+  const body: Record<string, unknown> = {
+    contents: opts.messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: { maxOutputTokens: opts.maxTokens ?? 1500 },
+  }
+  if (opts.system) {
+    body.system_instruction = { parts: [{ text: opts.system }] }
   }
 
-  const data = await res.json()
-  const text = (data.content || [])
-    .filter((b: any) => b.type === 'text')
-    .map((b: any) => b.text)
+  const res = await fetch(endpoint(opts.model || MODEL, apiKey), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  const data = await res.json().catch(() => null)
+
+  if (!res.ok) {
+    const detail = data?.error?.message || `Error de la API (${res.status}).`
+    throw new Error(detail)
+  }
+
+  const blocked = data?.promptFeedback?.blockReason
+  if (blocked) {
+    throw new Error('La IA ha bloqueado la petición (' + blocked + ').')
+  }
+
+  const cand = data?.candidates?.[0]
+  const text = (cand?.content?.parts || [])
+    .map((p: any) => p?.text || '')
     .join('')
+  if (!text) {
+    const reason = cand?.finishReason ? ' (' + cand.finishReason + ')' : ''
+    throw new Error('La IA no ha devuelto texto' + reason + '.')
+  }
   return text
 }
