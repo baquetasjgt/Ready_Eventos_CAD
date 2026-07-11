@@ -1,12 +1,7 @@
-import DocShell from './DocShell'
-import { KEYS } from '../lib/storage'
+import PlanosApp from '../features/planos/PlanosApp'
 
+// "Memoria y planos" — technical document editor (DXF → vector plans, láminas,
+// cajetín, memoria IA, etiquetas, leyendas, rotulación, tablas, PDF a 300 ppp).
 export default function Planos() {
-  return (
-    <DocShell
-      title="Memoria y planos"
-      subtitle="Documento técnico: planos vectoriales desde DXF (detección de láminas por marcos NO-PLOT, capas/colores/grosores del CAD), cajetín configurable, memoria con IA, etiquetas y leyendas, zonas de rotulación, tablas Excel y exportación a PDF a 300 ppp."
-      payloadKey={KEYS.planos}
-    />
-  )
+  return <PlanosApp />
 }
