@@ -67,6 +67,8 @@ interface VState {
   slDelPend?: string | null
   edRev?: number
   libSel?: string
+  vista?: 'doc' | 'grid'
+  gridOver?: number | null
 }
 
 const SANS = "'Archivo','Helvetica Neue',Helvetica,sans-serif"
@@ -159,6 +161,7 @@ export default class VentaApp extends Component<Props, VState> {
   _dDrag: any = null
   _rec: any = null
   _dKeys: any = null
+  _gridDrag: number | null = null
   _imgAr: Record<string, number> = {}
 
   LIBKEY = 'ready-slide-lib'
@@ -218,6 +221,8 @@ export default class VentaApp extends Component<Props, VState> {
     iaBusyId: null,
     iaError: '',
     imgSel: null,
+    vista: 'doc',
+    gridOver: null,
   }
 
   // ---- AI adapter (was window.claude.complete) ----
@@ -1530,6 +1535,19 @@ export default class VentaApp extends Component<Props, VState> {
     arr.splice(j, 0, it)
     this.up({ slides: arr })
   }
+  // Reordenación por arrastre en la vista de cuadrícula: mueve la lámina cuyo
+  // índice se guardó al empezar a arrastrar (_gridDrag) delante de la de destino.
+  gridReorder(dstIx: number) {
+    const from = this._gridDrag
+    this._gridDrag = null
+    this.setState({ gridOver: null })
+    if (from === null || from === undefined || from === dstIx) return
+    const slides = [...this.state.slides]
+    if (from < 0 || from >= slides.length || dstIx < 0 || dstIx >= slides.length) return
+    const [it] = slides.splice(from, 1)
+    slides.splice(from < dstIx ? dstIx - 1 : dstIx, 0, it)
+    this.up({ slides })
+  }
 
   renderVals(): any {
     const s = this.state
@@ -1758,6 +1776,7 @@ export default class VentaApp extends Component<Props, VState> {
     s.slides.forEach((sl, ix) => {
       const base: any = {
         ...this.dProps(sl),
+        slIx: ix,
         label: (TIPO_LABELS[sl.tipo] || sl.tipo) + ' ' + (ix + 1),
         kicker: sl.kicker, titulo: sl.titulo, texto: sl.texto,
         onCtx: (e: any) => this.openCtx(sl.id, e),
@@ -2021,6 +2040,9 @@ export default class VentaApp extends Component<Props, VState> {
       micPresu: () => this.dictar('presu'), micPresuBg: s.micOn === 'presu' ? '#D6197E' : 'transparent', micPresuFg: s.micOn === 'presu' ? '#FFFFFF' : '#B0447E',
       pedirCambiosGlobal: () => this.pedirCambios(null), iaEditing: s.iaBusyId === 'global', iaNotEditing: s.iaBusyId !== 'global', iaError: s.iaError,
       slidePages, fechaLarga,
+      grid: s.vista === 'grid',
+      goDoc: () => this.setState({ vista: 'doc' }),
+      goGrid: () => this.setState({ vista: 'grid' }),
       zoom: s.zoom, onZoom: (e: any) => this.up({ zoom: +e.target.value }), zoomPct: Math.round(s.zoom * 100) + '%',
       onUndo: this.undo, onRedo: this.redo,
       saveLabel: s.saving ? 'Guardando…' : 'Guardado ✓', saveCol: s.saving ? '#B07A1F' : '#1F8A5B',
@@ -2454,19 +2476,25 @@ export default class VentaApp extends Component<Props, VState> {
             <button onClick={v.onUndo} title="Deshacer (Ctrl+Z)" style={{ ...iconBtn, color: v.undoCol }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg></button>
             <button onClick={v.onRedo} title="Rehacer (Ctrl+Y)" style={{ ...iconBtn, color: v.redoCol }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></svg></button>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: MONO, fontSize: 9.5, color: '#8A867F' }}>ZOOM</span>
-            <input type="range" min={0.25} max={1.4} step={0.05} value={v.zoom} onChange={v.onZoom} style={{ width: 110, accentColor: '#17161A' }} />
-            <span style={{ fontFamily: MONO, fontSize: 10, color: '#17161A', width: 36 }}>{v.zoomPct}</span>
-          </label>
+          <div style={{ display: 'flex', gap: 2, background: '#ECEAE5', borderRadius: 8, padding: 3, flex: 'none' }}>
+            <button onClick={v.goDoc} title="Vista de documento" style={{ border: 'none', borderRadius: 6, padding: '6px 11px', fontSize: 11, fontWeight: 700, cursor: 'pointer', background: v.grid ? 'transparent' : '#17161A', color: v.grid ? '#6E6B66' : '#fff' }}>Documento</button>
+            <button onClick={v.goGrid} title="Vista de cuadrícula — arrastra para reordenar las láminas" style={{ border: 'none', borderRadius: 6, padding: '6px 11px', fontSize: 11, fontWeight: 700, cursor: 'pointer', background: v.grid ? '#17161A' : 'transparent', color: v.grid ? '#fff' : '#6E6B66' }}>Cuadrícula</button>
+          </div>
+          {!v.grid && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontFamily: MONO, fontSize: 9.5, color: '#8A867F' }}>ZOOM</span>
+              <input type="range" min={0.25} max={1.4} step={0.05} value={v.zoom} onChange={v.onZoom} style={{ width: 110, accentColor: '#17161A' }} />
+              <span style={{ fontFamily: MONO, fontSize: 10, color: '#17161A', width: 36 }}>{v.zoomPct}</span>
+            </label>
+          )}
           <button onClick={v.exportPdf} style={{ background: v.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Exportar PDF</button>
         </div>
 
-        {v.hayLaminas && this.renderDrawToolbar(v)}
+        {v.hayLaminas && !v.grid && this.renderDrawToolbar(v)}
 
         <div onClick={v.deselectImg} style={{ flex: 1, overflow: 'auto', padding: 36, background: '#E8E6E1' }}>
-          <div style={{ width: 'max-content', minWidth: '100%', margin: '0 auto', zoom: v.zoom } as any}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ width: v.grid ? 'auto' : 'max-content', minWidth: '100%', margin: '0 auto', zoom: v.grid ? 0.16 : v.zoom } as any}>
+            <div style={{ display: 'flex', flexDirection: v.grid ? 'row' : 'column', flexWrap: v.grid ? 'wrap' : 'nowrap', gap: v.grid ? 150 : 0, alignItems: v.grid ? 'flex-start' : 'center', justifyContent: 'center' }}>
               {v.slidePages.map((sl: any, i: number) => this.renderSlidePage(v, sl, i))}
             </div>
           </div>
@@ -2655,8 +2683,21 @@ export default class VentaApp extends Component<Props, VState> {
       <div onDragOver={im.over} onDragLeave={im.leave} onDrop={im.drop} title="Suelta aquí una imagen" style={{ position: 'absolute', inset: 0, outline: im.hlOl, outlineOffset: '-2mm', animation: im.hlAnim, background: dark ? 'repeating-linear-gradient(45deg,#2A2930 0 10px,#232229 10px 20px)' : 'repeating-linear-gradient(45deg,#F2F0EC 0 10px,#E9E6E0 10px 20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: '9pt', color: '#8A867F' }}>{label}</div>
     )
     return (
-      <div key={idx} className="venta-page" data-page="1" data-screen-label={sl.label} onContextMenu={sl.onCtx} style={{ width: '297mm', height: '210mm', flex: 'none', background: sl.pageBg, boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: 36, position: 'relative', overflow: 'hidden' }}>
+      <div key={idx} className="venta-page" data-page="1" data-screen-label={sl.label} onContextMenu={sl.onCtx} style={{ width: '297mm', height: '210mm', flex: 'none', background: sl.pageBg, boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: v.grid ? 0 : 36, position: 'relative', overflow: 'hidden' }}>
         {sl.dSvg}
+        {v.grid && (
+          <div
+            draggable
+            onDragStart={(e: any) => { e.dataTransfer.effectAllowed = 'move'; this._gridDrag = sl.slIx }}
+            onDragOver={(e: any) => { e.preventDefault(); if (this.state.gridOver !== sl.slIx) this.setState({ gridOver: sl.slIx }) }}
+            onDragLeave={() => { if (this.state.gridOver === sl.slIx) this.setState({ gridOver: null }) }}
+            onDrop={(e: any) => { e.preventDefault(); this.gridReorder(sl.slIx) }}
+            onDragEnd={() => { this._gridDrag = null; this.setState({ gridOver: null }) }}
+            onDoubleClick={v.goDoc}
+            title="Arrastra para reordenar · doble clic para editar"
+            style={{ position: 'absolute', inset: 0, zIndex: 60, cursor: 'grab', background: this.state.gridOver === sl.slIx ? 'rgba(214,25,126,0.12)' : 'transparent', outline: this.state.gridOver === sl.slIx ? '18px solid #D6197E' : 'none', outlineOffset: '-18px' }}
+          />
+        )}
 
         {sl.isHero && (
           <div style={{ position: 'absolute', inset: 0 }}>
