@@ -126,17 +126,43 @@ async function seedFromLocal(): Promise<void> {
 
 // ---- write-through hook ----
 const timers: Record<string, ReturnType<typeof setTimeout>> = {}
-function schedule(key: string, fn: () => Promise<void>): void {
+const pending: Record<string, () => Promise<void>> = {}
+
+function flushKey(key: string): void {
+  const fn = pending[key]
+  if (!fn) return
+  delete pending[key]
   clearTimeout(timers[key])
-  timers[key] = setTimeout(() => {
-    fn().catch((e) => console.warn('[sync] push', key, e?.message))
-  }, 900)
+  fn().catch((e) => console.warn('[sync] push', key, e?.message))
+}
+
+/** Fire every pending push right now (on reload / tab hide, so nothing is lost). */
+export function flushAll(): void {
+  for (const key of Object.keys(pending)) flushKey(key)
+}
+
+function schedule(key: string, fn: () => Promise<void>): void {
+  pending[key] = fn
+  clearTimeout(timers[key])
+  timers[key] = setTimeout(() => flushKey(key), 500)
 }
 
 function onWrite(key: string, _value: unknown): void {
   const spec = LISTS.find((l) => l.key === key)
   if (spec) return schedule(key, () => pushList(spec))
   if (docKeyInfo(key)) return schedule(key, () => pushDoc(key))
+}
+
+let unloadHooked = false
+function hookUnloadFlush(): void {
+  if (unloadHooked) return
+  unloadHooked = true
+  // Flush pending writes before the page goes away or is backgrounded, so a
+  // reload right after an edit doesn't lose the not-yet-synced change.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushAll()
+  })
+  window.addEventListener('pagehide', flushAll)
 }
 
 // ---- public API ----
@@ -159,9 +185,11 @@ export async function initSync(): Promise<void> {
     console.warn('[sync] initSync', e?.message)
   }
   setWriteHook(onWrite)
+  hookUnloadFlush()
 }
 
 export function stopSync(): void {
+  flushAll()
   setWriteHook(null)
   started = false
 }
