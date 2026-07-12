@@ -4,6 +4,8 @@ import { buildSVG, detectFrames } from './cad-lib'
 import { renderOverlay } from './overlay'
 import { GLYPH, glyphEl, SIM_OPTIONS } from './glyphs'
 import { read, KEYS } from '../../lib/storage'
+import RevisionLayer from '../revision/RevisionLayer'
+import RevisionBar from '../revision/RevisionBar'
 import type { Sheet } from './types'
 import {
   ACCENT,
@@ -347,6 +349,7 @@ export default function PlanosView(p: any) {
 
         {/* draw toolbar */}
         {hayPlanos && <DrawToolbar p={p} />}
+        {hayPlanos && p.vista !== 'grid' && <RevisionBar projectId={p.projectId} app="planos" />}
 
         {/* notice toast */}
         {p.notice && (
@@ -414,6 +417,7 @@ export default function PlanosView(p: any) {
                     }}
                     style={{ width: sp.W + 'mm', height: sp.H + 'mm', flex: 'none', background: '#fff', boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: 36, position: 'relative', cursor: grid ? 'grab' : 'default' }}
                   >
+                    {!grid && <RevisionLayer app="planos" projectId={p.projectId} pageId={sh.id} pageLabel={(sh.num ? sh.num + ' · ' : '') + (sh.tipo || 'Lámina')} />}
                     {sp.foldMarks.map((fm: any, i: number) => (
                       <React.Fragment key={'fm' + i}>
                         <div style={{ position: 'absolute', top: 0, left: fm.x + 'mm', width: '0.15mm', height: '5mm', background: '#17161A' }} />

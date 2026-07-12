@@ -3,6 +3,7 @@
 // un clic (con deshacer), prioridad, vencimiento y filtros por proyecto.
 
 import { useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { type Project, type Tarea } from '../../lib/storage'
 import { alias, menciones, myEmail, nombreCorto, timeAgo } from '../../lib/team'
 import {
@@ -26,6 +27,7 @@ export default function TareasPanel({ proyectos, abrirNotas }: {
   const [tareas] = useLista<Tarea>(listTareas)
   const miembros = useMiembros()
   const me = myEmail()
+  const navigate = useNavigate()
 
   const [nueva, setNueva] = useState('')
   const [nuevaProj, setNuevaProj] = useState('')
@@ -149,6 +151,16 @@ export default function TareasPanel({ proyectos, abrirNotas }: {
           {t.projectId && projName(t.projectId) && (
             <button className="tk-chip" title="Abrir las notas del proyecto" onClick={() => abrirNotas(t.projectId!)} style={{ border: '1px solid #E0DED8', background: '#F7F6F3', borderRadius: 999, padding: '2px 9px', fontFamily: MONO, fontSize: 9, color: '#55524D', cursor: 'pointer', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               ◳ {projName(t.projectId)}
+            </button>
+          )}
+          {t.review && t.projectId && (
+            <button
+              className="tk-chip"
+              title="Ver el post-it sobre la lámina"
+              onClick={() => navigate('/' + t.review!.app + '/' + t.projectId)}
+              style={{ border: '1px solid #F0CFE1', background: '#FBF1F6', borderRadius: 999, padding: '2px 9px', fontFamily: MONO, fontSize: 9, color: '#A81463', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              📌 {t.review.app === 'venta' ? 'Documento de venta' : 'Memoria y planos'}
             </button>
           )}
         </div>

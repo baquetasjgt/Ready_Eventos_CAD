@@ -10,6 +10,7 @@ export const KEYS = {
   proveedores: 'ready-proveedores-v1',
   notas: 'ready-notas-v1',
   tareas: 'ready-tareas-v1',
+  revisiones: 'ready-revisiones-v1',
   // per-app project registries + per-project payloads
   planosList: 'gencad-projects',
   ventaList: 'gencad-venta-projects',
@@ -104,6 +105,30 @@ export interface Tarea {
   vence?: string // fecha ISO yyyy-mm-dd
   created: number
   doneAt?: number
+  // Si la tarea nació de un post-it de revisión: dónde vive el post-it.
+  review?: { app: 'venta' | 'planos'; pageId: string }
+}
+
+// Marca del modo Revisión sobre una lámina: post-it o trazo (dibujo,
+// subrayado, flecha). Nunca se imprime; se oculta al completar su tarea.
+export interface Revision {
+  id: string
+  projectId: string
+  app: 'venta' | 'planos'
+  pageId: string
+  kind: 'postit' | 'stroke'
+  tareaId?: string
+  autor: string
+  created: number
+  // post-it
+  x?: number // % de la lámina
+  y?: number
+  color?: string
+  texto?: string
+  // trazo
+  tool?: 'draw' | 'hi' | 'arrow'
+  pts?: number[][] // [[x%, y%], …]
+  postitId?: string // trazo ligado a un post-it: desaparece con él
 }
 
 // ---- localStorage helpers ----

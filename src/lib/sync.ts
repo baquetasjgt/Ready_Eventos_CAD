@@ -55,13 +55,24 @@ const tareaToRow = (t: any) => ({
   id: t.id, titulo: t.titulo || '', detalle: t.detalle || '', project_id: t.projectId || null,
   asignada: t.asignada || '', autor: t.autor || '', estado: t.estado || 'pendiente',
   prioridad: t.prioridad || 'normal', vence: t.vence || null,
-  created: t.created ?? null, done_at: t.doneAt ?? null,
+  created: t.created ?? null, done_at: t.doneAt ?? null, review: t.review ?? null,
 })
 const rowToTarea = (r: any) => ({
   id: r.id, titulo: r.titulo || '', detalle: r.detalle || '', projectId: r.project_id || '',
   asignada: r.asignada || '', autor: r.autor || '', estado: r.estado || 'pendiente',
   prioridad: r.prioridad || 'normal', vence: r.vence || '',
-  created: r.created ?? undefined, doneAt: r.done_at ?? undefined,
+  created: r.created ?? undefined, doneAt: r.done_at ?? undefined, review: r.review ?? undefined,
+})
+const revToRow = (v: any) => ({
+  id: v.id, project_id: v.projectId || '', app: v.app || 'venta', page_id: v.pageId || '',
+  kind: v.kind || 'postit', tarea_id: v.tareaId || null, autor: v.autor || '',
+  created: v.created ?? null,
+  data: { x: v.x, y: v.y, color: v.color, texto: v.texto, tool: v.tool, pts: v.pts, postitId: v.postitId },
+})
+const rowToRev = (r: any) => ({
+  id: r.id, projectId: r.project_id || '', app: r.app || 'venta', pageId: r.page_id || '',
+  kind: r.kind || 'postit', tareaId: r.tarea_id || undefined, autor: r.autor || '',
+  created: r.created ?? undefined, ...(r.data || {}),
 })
 
 const LISTS: ListSpec[] = [
@@ -77,6 +88,7 @@ const LISTS: ListSpec[] = [
   { key: KEYS.projects, table: 'proyectos', toRow: proyectoToRow, fromRow: rowToProyecto },
   { key: KEYS.notas, table: 'notas', toRow: notaToRow, fromRow: rowToNota },
   { key: KEYS.tareas, table: 'tareas', toRow: tareaToRow, fromRow: rowToTarea },
+  { key: KEYS.revisiones, table: 'revisiones', toRow: revToRow, fromRow: rowToRev },
 ]
 
 const VENTA_PREFIX = KEYS.venta('')
@@ -171,7 +183,7 @@ function startRealtime(): void {
   try {
     const ch = supabase.channel('ready-team')
     rtChannel = ch
-    for (const table of ['notas', 'tareas', 'proyectos']) {
+    for (const table of ['notas', 'tareas', 'proyectos', 'revisiones']) {
       ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
         const spec = LISTS.find((l) => l.table === table)
         if (!spec) return

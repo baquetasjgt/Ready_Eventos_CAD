@@ -10,6 +10,8 @@ import React, { Component } from 'react'
 import { Link } from 'react-router-dom'
 import { KEYS, read, write } from '../../lib/storage'
 import { complete, hasApiKey } from '../../lib/claude'
+import RevisionLayer from '../revision/RevisionLayer'
+import RevisionBar from '../revision/RevisionBar'
 import { pdfText } from '../../lib/pdf'
 import * as XL from './xlsx'
 import type { Imagen, Slide, Presupuesto, Anota, CollageItem } from './types'
@@ -2580,6 +2582,7 @@ export default class VentaApp extends Component<Props, VState> {
         </div>
 
         {v.hayLaminas && !v.grid && this.renderDrawToolbar(v)}
+        {v.hayLaminas && !v.grid && <RevisionBar projectId={this.props.projectId} app="venta" />}
 
         <div onClick={v.deselectImg} style={{ flex: 1, overflow: 'auto', padding: 36, background: '#E8E6E1' }}>
           <div className="venta-zoomwrap" style={{ width: v.grid ? 'auto' : 'max-content', minWidth: '100%', margin: '0 auto', zoom: v.grid ? 0.16 : v.zoom } as any}>
@@ -2785,6 +2788,7 @@ export default class VentaApp extends Component<Props, VState> {
     return (
       <div key={idx} className="venta-page" data-page="1" data-screen-label={sl.label} onContextMenu={sl.onCtx} style={{ width: '297mm', height: '210mm', flex: 'none', background: sl.pageBg, boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: v.grid ? 0 : 36, position: 'relative', overflow: 'hidden' }}>
         {sl.dSvg}
+        <RevisionLayer app="venta" projectId={this.props.projectId} pageId={sl.slId} pageLabel={sl.label} />
         {v.grid && (
           <div
             data-ui="1"
