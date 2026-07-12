@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import './index.css'
 import Inicio from './pages/Inicio'
 import Venta from './pages/Venta'
@@ -11,6 +11,8 @@ const router = createBrowserRouter([
   { path: '/', element: <Inicio /> },
   { path: '/venta/:projectId', element: <Venta /> },
   { path: '/planos/:projectId', element: <Planos /> },
+  // Cualquier otra URL vuelve al inicio (sin pantalla de error en inglés).
+  { path: '*', element: <Navigate to="/" replace /> },
 ])
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

@@ -421,7 +421,7 @@ export default function PlanosView(p: any) {
                       </React.Fragment>
                     ))}
                     <div style={{ position: 'absolute', inset: '7mm', border: '0.35mm solid #17161A', display: 'flex', flexDirection: CAJ_POS === 'lateral' ? 'row' : 'column' }}>
-                      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, minHeight: 0, position: 'relative', marginBottom: CAJ_POS === 'lateral' ? '0mm' : '26mm' }}>
+                      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, minHeight: 0, position: 'relative', marginBottom: CAJ_POS === 'lateral' ? '0mm' : caj.h + 'mm' }}>
                         {sp.plan || (
                           <div style={{ border: '1px dashed #C9C5BC', borderRadius: '3mm', padding: '12mm 16mm', textAlign: 'center', fontFamily: MONO, fontSize: '9pt', lineHeight: 1.7, color: muted }}>
                             Sube un archivo DXF
@@ -791,7 +791,7 @@ function PlanosPanel({ p }: any) {
               <select value={d.unit} onChange={(e) => p.up({ drawings: doc.drawings.map((x: any) => (x.id === d.id ? { ...x, unit: e.target.value } : x)) })} style={{ padding: '6px 8px', border: '1px solid ' + fieldBd, borderRadius: 6, fontSize: 12, background: '#fff' }}>
                 {unitOptions.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
               </select>
-              <button onClick={() => { delete p.models.current[d.id]; p.up({ drawings: doc.drawings.filter((x: any) => x.id !== d.id), sheets: doc.sheets.filter((sh: any) => !(sh.auto && sh.drawingId === d.id)).map((sh: any) => (sh.drawingId === d.id ? { ...sh, drawingId: '' } : sh)) }) }} title="Eliminar dibujo" style={{ border: 'none', background: 'none', color: '#B4B0A8', fontSize: 17, cursor: 'pointer', padding: '6px 10px' }}>×</button>
+              <button onClick={() => p.delDrawing(d.id)} title="Eliminar dibujo" style={{ border: 'none', background: 'none', color: '#B4B0A8', fontSize: 17, cursor: 'pointer', padding: '6px 10px' }}>×</button>
             </div>
           </div>
         )
@@ -1178,7 +1178,9 @@ function PlanBar({ p }: any) {
   const barIsTool = p.tool === 'note' && !p.noteSel
   const barIsDraw = String(p.tool || '').indexOf('draw-') === 0 && !p.noteSel
   const z = p.selZona()
-  const sh = p.sheetById(p.toolSh)
+  // toolSh puede ser '*' (modo etiquetar global): usar la lámina resuelta por
+  // la app (con etiquetas seleccionadas o la activa).
+  const sh = p.etiqSheet || p.sheetById(p.toolSh)
   const msg = (() => {
     if (p.zoneEdit) return p.zoneSel ? 'ZONA — arrastra: mover · esquina inf. dcha: redimensionar · Supr: eliminar' : 'Dibuja un recuadro, o clic sobre un elemento del plano para anclar la zona · Esc: salir'
     if (p.noteSel) return p.noteSel.idxs.length > 1 ? p.noteSel.idxs.length + ' etiquetas — los cambios se aplican a todas' : 'ETIQUETA'
@@ -1255,10 +1257,10 @@ function PlanBar({ p }: any) {
               ))}
             </div>
           )}
-          <select value={String((sh || {}).notaFs || 2.4)} onChange={(e) => { if (p.toolSh) p.upSheet(p.toolSh, { notaFs: parseFloat(e.target.value) }) }} title="Tamaño del texto de las etiquetas" style={selD}>
+          <select value={String((sh || {}).notaFs || 2.4)} onChange={(e) => { if (sh) p.upSheet(sh.id, { notaFs: parseFloat(e.target.value) }) }} title="Tamaño del texto de las etiquetas" style={selD}>
             {[['2', 'Texto 2,0 mm'], ['2.4', 'Texto 2,4 mm'], ['3', 'Texto 3,0 mm']].map((o) => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
           </select>
-          {sh && (sh.notas || []).length > 0 && <button onClick={() => { const s = p.sheetById(p.toolSh); if (s && (s.notas || []).length) p.setNoteSel({ shId: p.toolSh, idxs: s.notas.map((_n: any, i: number) => i) }) }} style={dark}>Seleccionar todas</button>}
+          {sh && (sh.notas || []).length > 0 && <button onClick={() => { if ((sh.notas || []).length) p.setNoteSel({ shId: sh.id, idxs: sh.notas.map((_n: any, i: number) => i) }) }} style={dark}>Seleccionar todas</button>}
           <button onClick={p.alinearNotas} style={dark}>Alinear textos</button>
           <button onClick={p.generarNotasIA} style={{ border: 'none', background: '#D6197E', color: '#fff', borderRadius: 6, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{IA_STAR}<span>{p.notasIABusy ? 'Proponiendo…' : 'Etiquetas IA'}</span></button>
         </>

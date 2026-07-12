@@ -68,7 +68,8 @@ interface VState {
   edRev?: number
   libSel?: string
   vista?: 'doc' | 'grid'
-  gridOver?: number | null
+  gridOver?: string | null
+  imgDelPend?: string | null
 }
 
 const SANS = "'Archivo','Helvetica Neue',Helvetica,sans-serif"
@@ -88,6 +89,9 @@ const GLOBAL_CSS = `
   html, body { background:#fff !important; }
   [data-ui] { display:none !important; }
   .venta-page { box-shadow:none !important; margin:0 !important; }
+  /* Imprimir siempre a tamaño real, ignorando el zoom de pantalla */
+  .venta-zoomwrap { zoom: 1 !important; }
+  .venta-ph { visibility: hidden !important; }
 }
 `
 
@@ -103,8 +107,12 @@ function salvageSlides(raw: string): { slides: any[] } {
   for (let end = t.lastIndexOf('}'); end > a; end = t.lastIndexOf('}', end - 1)) {
     try {
       const o = JSON.parse(t.slice(a, end + 1))
-      if (o && o.slides && o.slides.length) return o
-    } catch {
+      if (o && Array.isArray(o.slides)) {
+        if (o.slides.length) return o
+        throw new Error('la IA no ha devuelto láminas')
+      }
+    } catch (e: any) {
+      if (e?.message === 'la IA no ha devuelto láminas') throw e
       /* keep trimming */
     }
   }
@@ -161,7 +169,10 @@ export default class VentaApp extends Component<Props, VState> {
   _dDrag: any = null
   _rec: any = null
   _dKeys: any = null
-  _gridDrag: number | null = null
+  _undoSig = ''
+  _undoAt = 0
+  _idp: any = null
+  _gridDrag: string | null = null
   _imgAr: Record<string, number> = {}
 
   LIBKEY = 'ready-slide-lib'
@@ -275,6 +286,11 @@ export default class VentaApp extends Component<Props, VState> {
     clearTimeout(this._pt)
     clearTimeout(this._ntT)
     clearTimeout(this._sdp)
+    clearTimeout(this._idp)
+    try { this._rec && this._rec.stop() } catch { /* mic ya parado */ }
+    // Volcar la escritura pendiente (debounce de 500 ms): sin esto, editar y
+    // salir a otra ruta perdía los últimos cambios.
+    if (this.state.projId) write(KEYS.venta(this.state.projId), this.buildPayload(false))
   }
 
   dupSlide(id: string) {
@@ -602,12 +618,23 @@ export default class VentaApp extends Component<Props, VState> {
   logUndo(patch: any) {
     const keys = Object.keys(patch).filter((k) => this.UNDOABLE.includes(k))
     if (!keys.length) return
+    // Coalescer ráfagas de tecleo: ediciones consecutivas de las mismas claves
+    // en <700 ms comparten una sola entrada de deshacer (si no, escribir 30
+    // caracteres vaciaba todo el historial).
+    const sig = keys.slice().sort().join(',')
+    const now = Date.now()
+    if (sig === this._undoSig && now - this._undoAt < 700) {
+      this._undoAt = now
+      return
+    }
     const snap: any = {}
     for (const k of keys) snap[k] = (this.state as any)[k]
     this._undo.push(snap)
     while (this._undo.length > 30) this._undo.shift()
     this._redo = []
     this._wlt = 0
+    this._undoSig = sig
+    this._undoAt = now
   }
   logGesture() {
     this._undo.push({ slides: this.state.slides })
@@ -986,14 +1013,17 @@ export default class VentaApp extends Component<Props, VState> {
 
   async fileToDataURL(file: File, maxDim = 1400): Promise<string> {
     const url = URL.createObjectURL(file)
-    const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('imagen no válida')); i.src = url })
-    const sc = Math.min(1, maxDim / Math.max(img.width, img.height))
-    const c = document.createElement('canvas')
-    c.width = Math.max(1, Math.round(img.width * sc))
-    c.height = Math.max(1, Math.round(img.height * sc))
-    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
-    URL.revokeObjectURL(url)
-    return file.type === 'image/png' ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.85)
+    try {
+      const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('imagen no válida')); i.src = url })
+      const sc = Math.min(1, maxDim / Math.max(img.width, img.height))
+      const c = document.createElement('canvas')
+      c.width = Math.max(1, Math.round(img.width * sc))
+      c.height = Math.max(1, Math.round(img.height * sc))
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
+      return file.type === 'image/png' ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.85)
+    } finally {
+      URL.revokeObjectURL(url)
+    }
   }
 
   onImgs = async (ev: any) => {
@@ -1097,7 +1127,13 @@ export default class VentaApp extends Component<Props, VState> {
     const hex = (v: any) => (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(String(v).trim())) ? String(v).trim() : ''
     const cl = (v: any, a: number, b: number, dflt: number) => { const q = +v; return isFinite(q) ? Math.max(a, Math.min(b, q)) : dflt }
     let n = this.state.seq
-    const slides = arr.filter((x) => this.TIPOS_OK.includes(x.tipo)).map((x) => ({
+    const slides = arr.filter((x) => this.TIPOS_OK.includes(x.tipo)).map((x) => {
+      // Conservar lo que la IA no conoce de la lámina existente: anotaciones a
+      // mano (anota), transformaciones, collage… Si la IA omite bg/bloques en
+      // una lámina que ya los tenía, se mantienen los actuales (antes se
+      // borraban los dibujos de TODAS las láminas al pedir cualquier cambio).
+      const prev = (this.state.slides.find((o) => o.id === x.id) || ({} as any))
+      return {
       id: (typeof x.id === 'string' && x.id) ? x.id : ('sl' + (n++)),
       tipo: x.tipo,
       kicker: String(x.kicker || '').trim(),
@@ -1105,19 +1141,21 @@ export default class VentaApp extends Component<Props, VState> {
       texto: String(x.texto || '').trim(),
       imgs: (Array.isArray(x.imgs) ? x.imgs : []).filter((id: string) => validIds.has(id)).slice(0, 3),
       side: (x.side === 'right' ? 'right' : 'left') as 'left' | 'right',
-      bg: hex(x.bg),
-      tr: (this.state.slides.find((o) => o.id === x.id) || ({} as any)).tr,
-      collage: (this.state.slides.find((o) => o.id === x.id) || ({} as any)).collage,
-      planoRef: (this.state.slides.find((o) => o.id === x.id) || ({} as any)).planoRef,
-      bloques: x.tipo === 'libre' ? (Array.isArray(x.bloques) ? x.bloques : []).slice(0, 14).map((b: any) => ({
+      bg: hex(x.bg) || prev.bg || '',
+      anota: prev.anota,
+      tr: prev.tr,
+      collage: prev.collage,
+      planoRef: prev.planoRef,
+      bloques: x.tipo === 'libre' ? (!Array.isArray(x.bloques) || !x.bloques.length ? prev.bloques : x.bloques.slice(0, 14).map((b: any) => ({
         kind: ['text', 'image', 'rect', 'logo'].includes(b.kind) ? b.kind : 'text',
         x: cl(b.x, -5, 100, 5), y: cl(b.y, -5, 100, 5), w: cl(b.w, 1, 110, 40), h: cl(b.h, 1, 110, 12),
         text: String(b.text || ''), size: cl(b.size, 6, 64, 11), weight: cl(b.weight, 400, 800, 400),
         color: hex(b.color) || '#17161A', bg: hex(b.bg), align: ['center', 'right', 'justify'].includes(b.align) ? b.align : 'left',
         mono: !!b.mono, lh: cl(b.lh, 0.9, 2.6, 1.45), ls: cl(b.ls, -0.05, 0.5, 0),
         imgId: validIds.has(b.imgId) ? b.imgId : '',
-      })) : undefined,
-    }))
+      }))) : prev.bloques,
+    }
+    })
     return { slides: slides as Slide[], n }
   }
 
@@ -1166,6 +1204,7 @@ export default class VentaApp extends Component<Props, VState> {
   }
 
   adaptarIA = async () => {
+    if (this.state.presuIA) return
     if (!this.aiAvail()) { this.up({ notice: 'La IA no está disponible en este entorno.' }); return }
     const pr = this.state.presupuesto
     if (!pr.rows.length) return
@@ -1179,7 +1218,8 @@ export default class VentaApp extends Component<Props, VState> {
       if (a < 0 || b <= a) throw new Error('formato inesperado')
       const o = JSON.parse(t.slice(a, b + 1))
       this.setState({ presuIA: false })
-      if (o.cols && o.rows) this.up({ presupuesto: { ...this.state.presupuesto, cols: o.cols.map(String), rows: o.rows.map((r: any[]) => r.map(String)) } })
+      if (Array.isArray(o.cols) && Array.isArray(o.rows)) this.up({ presupuesto: { ...this.state.presupuesto, cols: o.cols.map(String), rows: o.rows.map((r: any[]) => r.map(String)) } })
+      else this.up({ notice: 'La IA no ha devuelto un presupuesto válido. Vuelve a intentarlo.' })
     } catch (err: any) {
       this.setState({ presuIA: false })
       this.up({ notice: 'No se pudo adaptar el presupuesto: ' + err.message })
@@ -1286,15 +1326,15 @@ export default class VentaApp extends Component<Props, VState> {
       '\n\nDevuelve el array COMPLETO de láminas ya modificado (incluidas las que no cambian, con sus mismos id, en el orden final). Puedes cambiar textos, tipos, lados, imágenes (solo ids existentes, máx. 1 uso por imagen), reordenar, añadir láminas nuevas (sin id) o eliminar. Mantén el estilo: retórica arquitectónica + neuromarketing, textos 45–85 palabras (salvo hero/cierre), kickers cortos numerados. Español. No inventes cifras.\n\nResponde EXCLUSIVAMENTE con JSON: {"slides":[{"id":"...","tipo":"...","kicker":"...","titulo":"...","texto":"...","imgs":[],"side":"left"}]}'
     try {
       const res = await this.askClaude(prompt, 'Eres el director creativo de Ready Eventos, empresa española de diseño y montaje de stands de exposición para ferias. Editas presentaciones comerciales con precisión: cambias solo lo que se pide.', 8000)
-      const t = String(res); const a = t.indexOf('{'), b = t.lastIndexOf('}')
-      if (a < 0 || b <= a) throw new Error('formato inesperado')
-      const o = JSON.parse(t.slice(a, b + 1))
+      const o = salvageSlides(res)
       if (!o.slides || !o.slides.length) throw new Error('sin láminas')
       const { slides, n } = this.sanitizeSlides(o.slides)
       if (!slides.length) throw new Error('sin láminas válidas')
       const iaPrompts = { ...this.state.iaPrompts }
       if (scopeId) delete iaPrompts[scopeId]
-      this.setState({ iaBusyId: null })
+      // edRev remonta los contentEditable para que muestren el texto nuevo
+      // aunque el usuario tuviera uno enfocado durante la petición.
+      this.setState({ iaBusyId: null, edRev: (this.state.edRev || 0) + 1 })
       this.up({ seq: n, slides, iaPrompt: scopeId ? this.state.iaPrompt : '', iaPrompts, iaError: '', iaAdj: [] })
     } catch (err: any) {
       this.setState({ iaBusyId: null, iaError: 'No se pudieron aplicar los cambios (' + err.message + '). Vuelve a intentarlo.' })
@@ -1535,17 +1575,21 @@ export default class VentaApp extends Component<Props, VState> {
     arr.splice(j, 0, it)
     this.up({ slides: arr })
   }
-  // Reordenación por arrastre en la vista de cuadrícula: mueve la lámina cuyo
-  // índice se guardó al empezar a arrastrar (_gridDrag) delante de la de destino.
-  gridReorder(dstIx: number) {
-    const from = this._gridDrag
+  // Reordenación por arrastre en la vista de cuadrícula: mueve la lámina
+  // arrastrada (por id, robusto aunque cambie la lista en vuelo) delante de la
+  // de destino, o al final si dstId es null.
+  gridReorder(dstId: string | null) {
+    const fromId = this._gridDrag
     this._gridDrag = null
     this.setState({ gridOver: null })
-    if (from === null || from === undefined || from === dstIx) return
+    if (!fromId || fromId === dstId) return
     const slides = [...this.state.slides]
-    if (from < 0 || from >= slides.length || dstIx < 0 || dstIx >= slides.length) return
+    const from = slides.findIndex((x) => x.id === fromId)
+    if (from < 0) return
     const [it] = slides.splice(from, 1)
-    slides.splice(from < dstIx ? dstIx - 1 : dstIx, 0, it)
+    const dst = dstId === null ? slides.length : slides.findIndex((x) => x.id === dstId)
+    if (dst < 0) return
+    slides.splice(dst, 0, it)
     this.up({ slides })
   }
 
@@ -1575,9 +1619,23 @@ export default class VentaApp extends Component<Props, VState> {
       src: im.src, name: im.name, desc: im.desc,
       el: R('img', { src: im.src, alt: '', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }),
       onDesc: (e: any) => this.up({ imagenes: this.state.imagenes.map((x) => x.id === im.id ? { ...x, desc: e.target.value } : x) }),
+      // Borrado en dos pasos y deshacible: el primer clic pide confirmación y
+      // el blob no se toca (así Ctrl+Z restaura la imagen íntegra).
+      delPend: s.imgDelPend === im.id,
       onDelete: () => {
-        this.idbDel(im.id)
-        this.setState({ imagenes: this.state.imagenes.filter((x) => x.id !== im.id), slides: this.state.slides.map((sl) => ({ ...sl, imgs: (sl.imgs || []).filter((q) => q !== im.id) })) }, () => this.persistNow())
+        if (this.state.imgDelPend !== im.id) {
+          clearTimeout(this._idp)
+          this.setState({ imgDelPend: im.id })
+          this._idp = setTimeout(() => this.setState((st) => st.imgDelPend === im.id ? { imgDelPend: null } as any : null), 3000)
+          return
+        }
+        clearTimeout(this._idp)
+        this.setState({ imgDelPend: null })
+        this.up({
+          imagenes: this.state.imagenes.filter((x) => x.id !== im.id),
+          slides: this.state.slides.map((sl) => ({ ...sl, imgs: (sl.imgs || []).filter((q) => q !== im.id) })),
+        })
+        this.toast('Imagen eliminada de la galería.', true)
       },
     }))
 
@@ -1777,6 +1835,7 @@ export default class VentaApp extends Component<Props, VState> {
       const base: any = {
         ...this.dProps(sl),
         slIx: ix,
+        slId: sl.id,
         label: (TIPO_LABELS[sl.tipo] || sl.tipo) + ' ' + (ix + 1),
         kicker: sl.kicker, titulo: sl.titulo, texto: sl.texto,
         onCtx: (e: any) => this.openCtx(sl.id, e),
@@ -2058,7 +2117,9 @@ export default class VentaApp extends Component<Props, VState> {
       edKey1: (e: any) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur() } else if (e.key === 'Escape') e.target.blur() },
       edKeyN: (e: any) => { if (e.key === 'Escape') e.target.blur() },
       undoCol: this._undo.length ? '#17161A' : '#C9C5BC', redoCol: this._redo.length ? '#17161A' : '#C9C5BC',
-      exportPdf: () => this.setState({ imgSel: null }, () => setTimeout(() => window.print(), 60)),
+      // Antes de imprimir: vista documento (no la cuadrícula al 16 %) y sin
+      // selecciones activas (una anotación seleccionada salía rosa en el PDF).
+      exportPdf: () => this.setState({ imgSel: null, dSel: null, dGhost: null, dTool: null, vista: 'doc' }, () => setTimeout(() => window.print(), 60)),
       imgToolbar: (() => { if (!s.imgSel) return false; const sl = s.slides.find((x) => x.id === s.imgSel!.sid); return !!(sl && (sl.imgs || [])[s.imgSel!.k]) })(),
       imgScale: s.imgSel ? this.getTr(s.imgSel.sid, s.imgSel.k).s : 1,
       onImgScale: (e: any) => { if (s.imgSel) this.setTr(s.imgSel.sid, s.imgSel.k, { s: +e.target.value }, true) },
@@ -2170,7 +2231,7 @@ export default class VentaApp extends Component<Props, VState> {
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, border: '1px solid #E0DED8', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
                     <div style={{ position: 'relative', height: 110 }}>
                       {gr.el}
-                      <button onClick={gr.onDelete} style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(23,22,26,0.75)', color: '#fff', border: 'none', borderRadius: 5, width: 22, height: 22, fontSize: 13, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                      <button onClick={gr.onDelete} title={gr.delPend ? 'Confirmar eliminación' : 'Eliminar imagen (pide confirmación)'} style={{ position: 'absolute', top: 6, right: 6, background: gr.delPend ? '#C03A2B' : 'rgba(23,22,26,0.75)', color: '#fff', border: 'none', borderRadius: 5, minWidth: 22, height: 22, fontSize: gr.delPend ? 10 : 13, fontWeight: gr.delPend ? 700 : 400, cursor: 'pointer', lineHeight: 1, padding: gr.delPend ? '0 6px' : 0 }}>{gr.delPend ? '¿Eliminar?' : '×'}</button>
                     </div>
                     <input value={gr.desc} onChange={gr.onDesc} placeholder="¿Qué es? (la IA la colocará según esto)" style={{ margin: '0 8px 8px', padding: '7px 8px', border: '1px solid #DCD9D2', borderRadius: 6, fontSize: 11.5, background: '#fff', outline: 'none' }} />
                   </div>
@@ -2493,9 +2554,20 @@ export default class VentaApp extends Component<Props, VState> {
         {v.hayLaminas && !v.grid && this.renderDrawToolbar(v)}
 
         <div onClick={v.deselectImg} style={{ flex: 1, overflow: 'auto', padding: 36, background: '#E8E6E1' }}>
-          <div style={{ width: v.grid ? 'auto' : 'max-content', minWidth: '100%', margin: '0 auto', zoom: v.grid ? 0.16 : v.zoom } as any}>
+          <div className="venta-zoomwrap" style={{ width: v.grid ? 'auto' : 'max-content', minWidth: '100%', margin: '0 auto', zoom: v.grid ? 0.16 : v.zoom } as any}>
             <div style={{ display: 'flex', flexDirection: v.grid ? 'row' : 'column', flexWrap: v.grid ? 'wrap' : 'nowrap', gap: v.grid ? 150 : 0, alignItems: v.grid ? 'flex-start' : 'center', justifyContent: 'center' }}>
               {v.slidePages.map((sl: any, i: number) => this.renderSlidePage(v, sl, i))}
+              {v.grid && v.slidePages.length > 1 && (
+                <div
+                  data-ui="1"
+                  onDragOver={(e: any) => { e.preventDefault(); if (this.state.gridOver !== '__end__') this.setState({ gridOver: '__end__' }) }}
+                  onDragLeave={() => { if (this.state.gridOver === '__end__') this.setState({ gridOver: null }) }}
+                  onDrop={(e: any) => { e.preventDefault(); this.gridReorder(null) }}
+                  style={{ width: '297mm', height: '210mm', flex: 'none', border: '8px dashed ' + (this.state.gridOver === '__end__' ? '#D6197E' : '#C9C5BC'), borderRadius: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: 64, color: this.state.gridOver === '__end__' ? '#D6197E' : '#8A867F', background: this.state.gridOver === '__end__' ? 'rgba(214,25,126,0.06)' : 'transparent' }}
+                >
+                  Mover al final
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2680,28 +2752,29 @@ export default class VentaApp extends Component<Props, VState> {
     const edX = (style: any) => this.edDiv(sl.edRevX, sl.onEdX, v.edKeyN, style, sl.texto)
     const kickMono: React.CSSProperties = { fontFamily: MONO, fontSize: '8pt', letterSpacing: '0.2em', color: '#8A867F', textTransform: 'uppercase' }
     const slot = (im: any, label: string, dark?: boolean) => im.has ? im.el : (
-      <div onDragOver={im.over} onDragLeave={im.leave} onDrop={im.drop} title="Suelta aquí una imagen" style={{ position: 'absolute', inset: 0, outline: im.hlOl, outlineOffset: '-2mm', animation: im.hlAnim, background: dark ? 'repeating-linear-gradient(45deg,#2A2930 0 10px,#232229 10px 20px)' : 'repeating-linear-gradient(45deg,#F2F0EC 0 10px,#E9E6E0 10px 20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: '9pt', color: '#8A867F' }}>{label}</div>
+      <div className="venta-ph" onDragOver={im.over} onDragLeave={im.leave} onDrop={im.drop} title="Suelta aquí una imagen" style={{ position: 'absolute', inset: 0, outline: im.hlOl, outlineOffset: '-2mm', animation: im.hlAnim, background: dark ? 'repeating-linear-gradient(45deg,#2A2930 0 10px,#232229 10px 20px)' : 'repeating-linear-gradient(45deg,#F2F0EC 0 10px,#E9E6E0 10px 20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: '9pt', color: '#8A867F' }}>{label}</div>
     )
     return (
       <div key={idx} className="venta-page" data-page="1" data-screen-label={sl.label} onContextMenu={sl.onCtx} style={{ width: '297mm', height: '210mm', flex: 'none', background: sl.pageBg, boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: v.grid ? 0 : 36, position: 'relative', overflow: 'hidden' }}>
         {sl.dSvg}
         {v.grid && (
           <div
+            data-ui="1"
             draggable
-            onDragStart={(e: any) => { e.dataTransfer.effectAllowed = 'move'; this._gridDrag = sl.slIx }}
-            onDragOver={(e: any) => { e.preventDefault(); if (this.state.gridOver !== sl.slIx) this.setState({ gridOver: sl.slIx }) }}
-            onDragLeave={() => { if (this.state.gridOver === sl.slIx) this.setState({ gridOver: null }) }}
-            onDrop={(e: any) => { e.preventDefault(); this.gridReorder(sl.slIx) }}
+            onDragStart={(e: any) => { e.dataTransfer.effectAllowed = 'move'; this._gridDrag = sl.slId }}
+            onDragOver={(e: any) => { e.preventDefault(); if (this.state.gridOver !== sl.slId) this.setState({ gridOver: sl.slId }) }}
+            onDragLeave={() => { if (this.state.gridOver === sl.slId) this.setState({ gridOver: null }) }}
+            onDrop={(e: any) => { e.preventDefault(); this.gridReorder(sl.slId) }}
             onDragEnd={() => { this._gridDrag = null; this.setState({ gridOver: null }) }}
             onDoubleClick={v.goDoc}
             title="Arrastra para reordenar · doble clic para editar"
-            style={{ position: 'absolute', inset: 0, zIndex: 60, cursor: 'grab', background: this.state.gridOver === sl.slIx ? 'rgba(214,25,126,0.12)' : 'transparent', outline: this.state.gridOver === sl.slIx ? '18px solid #D6197E' : 'none', outlineOffset: '-18px' }}
+            style={{ position: 'absolute', inset: 0, zIndex: 60, cursor: 'grab', background: this.state.gridOver === sl.slId ? 'rgba(214,25,126,0.12)' : 'transparent', outline: this.state.gridOver === sl.slId ? '18px solid #D6197E' : 'none', outlineOffset: '-18px' }}
           />
         )}
 
         {sl.isHero && (
           <div style={{ position: 'absolute', inset: 0 }}>
-            {sl.i1.has ? sl.i1.el : <div onDragOver={sl.i1.over} onDragLeave={sl.i1.leave} onDrop={sl.i1.drop} title="Suelta aquí una imagen" style={{ position: 'absolute', inset: 0, outline: sl.i1.hlOl, outlineOffset: '-2mm', animation: sl.i1.hlAnim, background: 'repeating-linear-gradient(45deg,#2A2930 0 10px,#232229 10px 20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: '10pt', color: '#8A867F' }}>imagen principal — render del stand</div>}
+            {sl.i1.has ? sl.i1.el : <div className="venta-ph" onDragOver={sl.i1.over} onDragLeave={sl.i1.leave} onDrop={sl.i1.drop} title="Suelta aquí una imagen" style={{ position: 'absolute', inset: 0, outline: sl.i1.hlOl, outlineOffset: '-2mm', animation: sl.i1.hlAnim, background: 'repeating-linear-gradient(45deg,#2A2930 0 10px,#232229 10px 20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: '10pt', color: '#8A867F' }}>imagen principal — render del stand</div>}
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(115deg, ' + accent + 'CC 0%, ' + accent + '66 38%, rgba(23,22,26,0.25) 75%, rgba(23,22,26,0.55) 100%)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '52%', background: 'linear-gradient(to top, rgba(23,22,26,0.82), rgba(23,22,26,0))', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', left: '12mm', right: '12mm', bottom: '12mm', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10mm' }}>

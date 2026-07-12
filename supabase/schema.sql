@@ -68,6 +68,20 @@ begin
 end $$;
 grant select, insert, delete on public.miembros to authenticated;
 
+-- Secreto de la IA como respaldo de la variable de entorno de la Edge Function.
+-- RLS activo SIN políticas: ningún rol de PostgREST puede leerla; sólo la
+-- función edge con service_role.
+create table if not exists public.app_secrets (
+  name text primary key,
+  value text not null
+);
+alter table public.app_secrets enable row level security;
+
+-- NOTA de seguridad (aplicada en el proyecto vía dashboard, documentada aquí):
+-- la autenticación exige confirmación de email ("Confirm email" activado).
+-- Si se desactivara, cualquiera podría registrarse con un correo de la
+-- allowlist sin poseerlo y pasar is_member().
+
 -- ---- Storage (buckets privados, sólo miembros) ----
 insert into storage.buckets (id, name, public) values
   ('normativa','normativa', false), ('imagenes','imagenes', false), ('dxf','dxf', false)

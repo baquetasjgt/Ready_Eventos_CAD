@@ -48,17 +48,31 @@ Deno.serve(async (req: Request) => {
     if (!key) return json({ error: "Falta la clave de Gemini en el servidor." }, 500);
 
     const { system, messages = [], maxTokens = 1500, model } = await req.json();
-    const body: Record<string, unknown> = {
-      contents: (messages as Array<{ role: string; content: string }>).map((m) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      })),
-      generationConfig: { maxOutputTokens: maxTokens },
+    // Endurecimiento: modelo restringido a la familia gemini, tokens acotados.
+    const mdl = typeof model === "string" && /^gemini-[\w.-]{1,40}$/.test(model) ? model : MODEL;
+    const maxTok = Math.min(Math.max(Number(maxTokens) || 1500, 1), 8192);
+    // content puede ser texto o bloques [{type:'text'|'image',...}] → parts Gemini.
+    const toParts = (content: unknown): unknown[] => {
+      if (typeof content === "string") return [{ text: content }];
+      const parts: unknown[] = [];
+      for (const b of (Array.isArray(content) ? content : []) as Array<Record<string, any>>) {
+        if (b?.type === "text" && b.text) parts.push({ text: b.text });
+        else if (b?.type === "image" && b.source?.data)
+          parts.push({ inlineData: { mimeType: b.source.media_type || "image/png", data: b.source.data } });
+      }
+      return parts.length ? parts : [{ text: "" }];
     };
-    if (system) body.system_instruction = { parts: [{ text: system }] };
+    const body: Record<string, unknown> = {
+      contents: (messages as Array<{ role: string; content: unknown }>).map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: toParts(m.content),
+      })),
+      generationConfig: { maxOutputTokens: maxTok },
+    };
+    if (system) body.system_instruction = { parts: [{ text: String(system) }] };
 
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model || MODEL}:generateContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(mdl)}:generateContent?key=${key}`,
       { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
     );
     const data = await r.json();
@@ -69,7 +83,8 @@ Deno.serve(async (req: Request) => {
       .map((p: { text?: string }) => p?.text || "")
       .join("");
     return json({ text });
-  } catch (e) {
-    return json({ error: String((e as Error)?.message || e) }, 500);
+  } catch (_e) {
+    // No filtrar detalles internos al cliente.
+    return json({ error: "Error interno del asistente de IA." }, 500);
   }
 });

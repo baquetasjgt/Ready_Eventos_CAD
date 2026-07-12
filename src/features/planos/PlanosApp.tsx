@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { KEYS, read, write, idbGet, idbSet } from '../../lib/storage'
+import { KEYS, read, write, idbGet, idbSet, idbDel } from '../../lib/storage'
 import { complete, hasApiKey } from '../../lib/claude'
 import * as lib from './cad-lib'
 import type { Model } from './cad-lib'
@@ -95,6 +95,8 @@ const IA_STAR = (
 
 export default function PlanosApp() {
   const { projectId = '' } = useParams()
+  // Clave de IndexedDB del DXF crudo, única por proyecto y dibujo.
+  const dxfKey = (drawingId: string) => 'dxf-' + projectId + '-' + drawingId
 
   // ---- refs (heavy / imperative) ----
   const models = useRef<Record<string, Model>>({})
@@ -239,12 +241,29 @@ export default function PlanosApp() {
     })
   }, [])
   const live = useCallback((patch: Partial<Doc>) => setDocState((prev) => ({ ...prev, ...patch })), [])
+  // Variantes funcionales: parchean sobre el estado ACTUAL, no sobre el doc
+  // capturado al lanzar una petición async — sin esto, una respuesta de la IA
+  // que tardara unos segundos revertía las ediciones hechas mientras tanto.
+  const upFn = useCallback((fn: (prev: Doc) => Partial<Doc>) => {
+    setDocState((prev) => {
+      undoRef.current.push(prev)
+      if (undoRef.current.length > 30) undoRef.current.shift()
+      redoRef.current = []
+      return { ...prev, ...fn(prev) }
+    })
+  }, [])
+  const liveFn = useCallback(
+    (fn: (prev: Doc) => Partial<Doc>) => setDocState((prev) => ({ ...prev, ...fn(prev) })),
+    [],
+  )
   const undo = useCallback(() => {
     setDocState((prev) => {
       const p = undoRef.current.pop()
       if (!p) return prev
       redoRef.current.push(prev)
-      return p
+      // Nunca restaurar el flag transitorio de "generando" (dejaría el botón
+      // de la memoria bloqueado con spinner hasta recargar).
+      return { ...p, memoria: { ...p.memoria, generating: false } }
     })
     setNoteSel(null)
     setZoneSel(null)
@@ -255,28 +274,57 @@ export default function PlanosApp() {
       const n = redoRef.current.pop()
       if (!n) return prev
       undoRef.current.push(prev)
-      return n
+      return { ...n, memoria: { ...n.memoria, generating: false } }
     })
   }, [])
 
+  const toastT = useRef<any>(null)
   const toast = useCallback((msg: string, undoable?: boolean) => {
     setNotice(msg)
     setNoticeUndo(!!undoable)
-    setTimeout(() => {
+    clearTimeout(toastT.current) // el timer del aviso anterior ya no debe cerrar éste
+    toastT.current = setTimeout(() => {
       setNotice('')
       setNoticeUndo(false)
     }, 8000)
   }, [])
 
+  // Si se suelta el ratón fuera del plano (p. ej. sobre la barra lateral), el
+  // arrastre de notas/croquis/zonas quedaba "pegado" al cursor: cancelarlo.
+  useEffect(() => {
+    const onWinUp = () => {
+      const dr = drag.current || {}
+      if (dr.noteDrag || dr.marquee || dr.sketch || dr.zdrag || dr.zresize) drag.current = {}
+    }
+    window.addEventListener('mouseup', onWinUp)
+    return () => window.removeEventListener('mouseup', onWinUp)
+  }, [])
+
   // ---- boot / load ----
   useEffect(() => {
+    // Al cambiar de proyecto, vaciar cachés y pilas de deshacer del anterior
+    // (si no, Ctrl+Z podía restaurar el documento de otro proyecto).
+    models.current = {}
+    raws.current = {}
+    svgCache.current = {}
+    thumbCache.current = {}
+    framesCache.current = {}
+    snapCache.current = {}
+    undoRef.current = []
+    redoRef.current = []
+
     // Rehidrata desde IndexedDB los DXF que no viajan en el guardado local
     // (los grandes, que no caben en localStorage). Al resolverse, inyecta el
     // modelo y quita el estado «pendiente» de esa lámina.
     const hydrateFromIdb = async (ids: string[]) => {
       for (const id of ids) {
         try {
-          const stored = await idbGet('dxf-' + id)
+          let stored = await idbGet(dxfKey(id))
+          if (!stored?.text) {
+            // Migración: los primeros guardados usaban la clave sin proyecto.
+            stored = await idbGet('dxf-' + id)
+            if (stored?.text) idbSet(dxfKey(id), stored)
+          }
           if (!stored?.text) continue
           const m = lib.parseDXF(stored.text)
           if (!m.n) continue
@@ -301,18 +349,26 @@ export default function PlanosApp() {
           if (dr.sample) {
             models.current[dr.id] = lib.sampleModel()
             drawings.push({ id: dr.id, name: dr.name, unit: dr.unit || 'm', sample: true })
-          } else if (dr.raw) {
+            continue
+          }
+          if (dr.raw) {
             const m = lib.parseDXF(dr.raw)
             if (m.n > 0) {
               models.current[dr.id] = m
               raws.current[dr.id] = dr.raw
               drawings.push({ id: dr.id, name: dr.name, unit: dr.unit || m.unitsGuess })
+              continue
             }
-          } else {
-            drawings.push({ id: dr.id, name: dr.name, unit: dr.unit || 'm', pending: true })
-            if (!dr.sample) pendingIds.push(dr.id)
           }
-        } catch (e) {}
+          // Sin raw legible: conservar como pendiente e intentar rehidratar
+          // desde IndexedDB (antes se descartaba y el siguiente guardado lo
+          // eliminaba definitivamente).
+          drawings.push({ id: dr.id, name: dr.name, unit: dr.unit || 'm', pending: true })
+          pendingIds.push(dr.id)
+        } catch (e) {
+          drawings.push({ id: dr.id, name: dr.name, unit: dr.unit || 'm', pending: true })
+          pendingIds.push(dr.id)
+        }
       }
       let cajetin = saved.cajetin && saved.cajetin.length ? saved.cajetin : DEFAULT_DOC.cajetin
       if (!cajetin.some((f: any) => f.src === 'escala'))
@@ -451,8 +507,11 @@ export default function PlanosApp() {
     const p = PAPER[size] || PAPER.A3
     const W = orient === 'l' ? p[1] : p[0]
     const H = orient === 'l' ? p[0] : p[1]
+    // El alto del cajetín es configurable: usar el real, no un 26 fijo (si no,
+    // la escala sugerida y el aviso «No cabe» calculaban con un área errónea).
+    const cajH = Number(doc.cajStyle?.h) || 26
     const vw = W - 14 - (CAJ_POS === 'lateral' ? 44 : 0)
-    const vh = H - 14 - (CAJ_POS === 'lateral' ? 0 : 26)
+    const vh = H - 14 - (CAJ_POS === 'lateral' ? 0 : cajH)
     return { W, H, vw, vh }
   }
   const planSizeMM = (m: Model, unit: string, escala: number, region: any) => {
@@ -570,14 +629,33 @@ export default function PlanosApp() {
     const frames = lib.detectFrames(m, d.unit, (ly) => isMarcoLayer(ly)) || []
     framesCache.current = {}
     if (!frames.length) {
-      up({} as any)
       toast('No se han detectado marcos de lámina en «' + d.name + '». Dibuja un rectángulo cerrado (RECTANG) con las medidas del papel a escala, idealmente en una capa LAMINA o *NO-PLOT*.')
       return
     }
+    // Re-detectar reemplaza las láminas auto de este dibujo (y sus notas,
+    // zonas y croquis): avisar si alguna tiene trabajo hecho.
+    const autos = doc.sheets.filter((sh) => sh.auto && sh.drawingId === d.id)
+    const conTrabajo = autos.some((sh) => (sh.notas || []).length || (sh.croquis || []).length || (sh.zonas || []).some((z: any) => z.src))
+    if (conTrabajo && !window.confirm('Volver a detectar reemplazará las láminas detectadas de este plano y se perderán sus etiquetas, zonas y croquis. ¿Continuar? (Ctrl+Z lo deshace)')) return
     const keep = doc.sheets.filter((sh) => !(sh.auto && sh.drawingId === d.id))
     const sheets = renumber([...keep, ...sheetsFromFrames(d.id, frames, doc.seq)])
     up({ seq: doc.seq + frames.length, sheets })
     toast('Detectadas ' + frames.length + (frames.length === 1 ? ' lámina' : ' láminas') + ' en «' + d.name + '».')
+  }
+
+  // Eliminar un dibujo: además del estado, limpiar el modelo, el DXF crudo en
+  // memoria y su copia en IndexedDB (antes quedaban huérfanos para siempre).
+  const delDrawing = (drawingId: string) => {
+    delete models.current[drawingId]
+    delete raws.current[drawingId]
+    idbDel(dxfKey(drawingId))
+    idbDel('dxf-' + drawingId) // clave antigua sin proyecto
+    up({
+      drawings: doc.drawings.filter((x) => x.id !== drawingId),
+      sheets: doc.sheets
+        .filter((sh) => !(sh.auto && sh.drawingId === drawingId))
+        .map((sh) => (sh.drawingId === drawingId ? { ...sh, drawingId: '' } : sh)),
+    })
   }
 
   const detectarZonas = (shId: string, silencioso?: boolean) => {
@@ -640,7 +718,10 @@ export default function PlanosApp() {
         toast('«' + file.name + '» es un DXF binario. Guárdalo como DXF ASCII desde AutoCAD.')
         continue
       }
-      const text = new TextDecoder('utf-8').decode(buf)
+      let text = new TextDecoder('utf-8').decode(buf)
+      // DXF antiguos vienen en ANSI/CP1252: si el UTF-8 produce caracteres de
+      // reemplazo (Ñ, º, ° rotos), reintentar como latin1.
+      if (text.includes('�')) text = new TextDecoder('windows-1252').decode(buf)
       try {
         const m = lib.parseDXF(text)
         if (!m.n) {
@@ -652,7 +733,9 @@ export default function PlanosApp() {
         raws.current[id] = text
         // Copia íntegra del DXF en IndexedDB (sin el límite de tamaño de
         // localStorage), para que un archivo grande sobreviva a la recarga.
-        idbSet('dxf-' + id, { name: file.name, blob: new Blob([text]), text })
+        // Clave con el id del proyecto: los ids de dibujo (d10, d11…) se
+        // repiten entre proyectos y sin prefijo se pisaban el DXF unos a otros.
+        idbSet(dxfKey(id), { name: file.name, blob: new Blob([text]), text })
         const frames = lib.detectFrames(m, m.unitsGuess, (ly) => isMarcoLayer(ly)) || []
         let newSheets: Sheet[], used: number
         if (frames.length) {
@@ -763,10 +846,10 @@ export default function PlanosApp() {
       if (a < 0 || b <= a) throw new Error('respuesta con formato inesperado')
       const arr = JSON.parse(t.slice(a, b + 1))
       const sections = arr.map((x: any) => ({ titulo: String(x.titulo || '').trim() || 'Sección', contenido: String(x.contenido || '').trim() }))
-      up({ memoria: { ...doc.memoria, generating: false, sections, error: '' } })
+      upFn((prev) => ({ memoria: { ...prev.memoria, generating: false, sections, error: '' } }))
       setIaAdj([])
     } catch (err: any) {
-      up({ memoria: { ...doc.memoria, generating: false, error: 'No se pudo generar la memoria (' + err.message + ').' } })
+      liveFn((prev) => ({ memoria: { ...prev.memoria, generating: false, error: 'No se pudo generar la memoria (' + err.message + ').' } }))
     }
   }
 
@@ -796,8 +879,11 @@ export default function PlanosApp() {
 
   // ==== leyendas ====
   const updLeyenda = (shId: string, patch: any) => {
-    const sh = sheetById(shId)
-    upSheet(shId, { leyenda: { show: true, items: [], ...(sh?.leyenda || {}), ...patch } })
+    upFn((prev) => ({
+      sheets: prev.sheets.map((x) =>
+        x.id === shId ? { ...x, leyenda: { show: true, items: [], ...(x.leyenda || {}), ...patch } } : x,
+      ),
+    }))
   }
   const generarLeyenda = async (shId: string) => {
     if (!hasApiKey()) {
@@ -956,8 +1042,9 @@ export default function PlanosApp() {
       if (a < 0 || b <= a) throw new Error('formato inesperado')
       const obj = JSON.parse(t.slice(a, b + 1))
       setTablaIA(null)
-      if (obj.cols && obj.rows)
-        up({ tables: doc.tables.map((x) => (x.id === tid ? { ...x, titulo: obj.titulo || x.titulo, cols: obj.cols.map(String), rows: obj.rows.map((r: any[]) => r.map(String)) } : x)) })
+      if (Array.isArray(obj.cols) && Array.isArray(obj.rows))
+        upFn((prev) => ({ tables: prev.tables.map((x) => (x.id === tid ? { ...x, titulo: obj.titulo || x.titulo, cols: obj.cols.map(String), rows: obj.rows.map((r: any[]) => r.map(String)) } : x)) }))
+      else toast('La IA no ha devuelto una tabla válida.')
     } catch (err: any) {
       setTablaIA(null)
       toast('No se pudo adaptar la tabla con IA: ' + err.message)
@@ -978,8 +1065,14 @@ export default function PlanosApp() {
     const set = new Set(noteSel.idxs)
     upSheet(noteSel.shId, { notas: (sh.notas || []).map((n, j) => (set.has(j) ? { ...n, ...patch } : n)) })
   }
+  // El modo Etiquetar se activa con toolSh '*' (cualquier plano): las acciones
+  // de la barra inferior actúan sobre la lámina con etiquetas seleccionadas o,
+  // en su defecto, la lámina activa. Antes sheetById('*') devolvía undefined y
+  // «Alinear textos» / «Etiquetas IA» no hacían nada, sin error.
+  const etiqTarget = () =>
+    sheetById(toolSh && toolSh !== '*' ? toolSh : noteSel?.shId || selSheet || (doc.sheets[0]?.id ?? ''))
   const alinearNotas = () => {
-    const sh = sheetById(toolSh)
+    const sh = etiqTarget()
     if (!sh || !(sh.notas || []).length) return
     const notas = sh.notas!
     const isBal = (n: Nota) => (n.style || 'dot') === 'balloon'
@@ -995,10 +1088,13 @@ export default function PlanosApp() {
       toast('La IA no está disponible en este entorno.')
       return
     }
-    const sh = sheetById(toolSh)
+    const sh = etiqTarget()
     const d = sh && doc.drawings.find((x) => x.id === sh.drawingId)
     const m = d && models.current[d.id]
-    if (!m || !sh || !d) return
+    if (!m || !sh || !d) {
+      toast('Selecciona antes una lámina con plano asignado.')
+      return
+    }
     setNotasIABusy(true)
     const b = sh.region || m.bounds
     const bx = { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY }
@@ -1039,7 +1135,10 @@ export default function PlanosApp() {
         .slice(0, 8)
         .map((n: any) => ({ x1: cl(n.x1, bx.minX, bx.maxX), y1: cl(n.y1, bx.minY, bx.maxY), x2: cl(n.x2, bx.minX, bx.maxX), y2: cl(n.y2, bx.minY, bx.maxY), text: String(n.text).trim(), style: 'dot' }))
       setNotasIABusy(false)
-      if (nuevas.length) upSheet(sh.id, { notas: [...(sh.notas || []), ...nuevas] })
+      if (nuevas.length)
+        upFn((prev) => ({
+          sheets: prev.sheets.map((x) => (x.id === sh.id ? { ...x, notas: [...(x.notas || []), ...nuevas] } : x)),
+        }))
       else toast('La IA no propuso etiquetas válidas.')
     } catch (err: any) {
       setNotasIABusy(false)
@@ -1539,26 +1638,16 @@ export default function PlanosApp() {
   }
 
   // ==== PDF export ====
-  const loadCdn = (src: string) =>
-    new Promise<void>((res, rej) => {
-      const s = document.createElement('script')
-      s.src = src
-      s.onload = () => res()
-      s.onerror = () => rej(new Error('no se pudo cargar ' + src))
-      document.head.appendChild(s)
-    })
+  // Librerías empaquetadas con la app (chunk aparte, cargado al exportar).
+  // Antes se inyectaban desde un CDN sin verificación de integridad.
   const doExportPdf = async () => {
     if (exporting) return
-    let HTI = (window as any).htmlToImage
-    let JSPDF = ((window as any).jspdf || {}).jsPDF
-    if (!HTI || !JSPDF) {
-      try {
-        if (!HTI) await loadCdn('https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js')
-        if (!JSPDF) await loadCdn('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js')
-        HTI = (window as any).htmlToImage
-        JSPDF = ((window as any).jspdf || {}).jsPDF
-      } catch (e) {}
-    }
+    let HTI: any = null
+    let JSPDF: any = null
+    try {
+      HTI = await import('html-to-image')
+      JSPDF = (await import('jspdf')).jsPDF
+    } catch (e) {}
     setTool(null)
     setToolSh(null)
     setNoteSel(null)
@@ -1628,6 +1717,7 @@ export default function PlanosApp() {
       setExporting('')
     } catch (err) {
       setExporting('')
+      toast('No se pudo generar el PDF directo; se abre el diálogo de impresión del navegador como alternativa.')
       setTimeout(() => window.print(), 80)
     }
   }
@@ -1709,6 +1799,8 @@ export default function PlanosApp() {
       vbFor={vbFor}
       onFile={onFile}
       detectar={detectar}
+      delDrawing={delDrawing}
+      etiqSheet={etiqTarget()}
       detectarZonas={detectarZonas}
       updZona={updZona}
       selZona={selZona}

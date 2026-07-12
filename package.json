@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && rm -f build/_redirects",
+    "build": "tsc --noEmit && vite build && rm -f build/_redirects && sh -c '! grep -rq AIzaSy build'",
     "preview": "vite preview"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
+    "html-to-image": "^1.11.13",
+    "jspdf": "^2.5.2",
+    "pdfjs-dist": "^3.11.174",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2"

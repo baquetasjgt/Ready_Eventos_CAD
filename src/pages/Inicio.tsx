@@ -65,6 +65,30 @@ const cellInput: React.CSSProperties = {
 }
 const ROW_GRID =
   'minmax(140px,1.6fr) minmax(80px,1fr) minmax(80px,1fr) minmax(136px,158px) 56px max-content'
+
+// Ids únicos: Date.now() a secas colisionaba con doble clic o entre dispositivos.
+const uid = (prefix: string) =>
+  prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+
+// Borra de la base local de imágenes del Documento de venta (gencad-venta) los
+// blobs de un proyecto eliminado — antes quedaban huérfanos para siempre.
+function delVentaImgs(ids: string[]) {
+  if (!ids.length) return
+  try {
+    const rq = indexedDB.open('gencad-venta', 1)
+    rq.onupgradeneeded = () => rq.result.createObjectStore('imgs')
+    rq.onsuccess = () => {
+      try {
+        const tx = rq.result.transaction('imgs', 'readwrite')
+        for (const id of ids) tx.objectStore('imgs').delete(id)
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
 const CONTACT_GRID =
   'minmax(110px,1.2fr) minmax(90px,1fr) minmax(90px,0.9fr) minmax(110px,1.1fr) max-content'
 
@@ -87,32 +111,38 @@ export default function Inicio() {
   const [delPendC, setDelPendC] = useState<string | null>(null)
   const [delPendF, setDelPendF] = useState<string | null>(null)
   const [delPendV, setDelPendV] = useState<string | null>(null)
+  const [delPendDoc, setDelPendDoc] = useState<string | null>(null)
   const [subiendo, setSubiendo] = useState<string | null>(null)
   const [histOpen, setHistOpen] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
 
   // ---- boot / reload ----
   const boot = useCallback(() => {
-    let sh = read<{ list: Project[]; current: string | null }>(KEYS.projects)
-    if (!sh || !Array.isArray(sh.list)) sh = { list: [], current: null }
-    let changed = false
-    for (const k of [KEYS.planosList, KEYS.ventaList]) {
-      const m = read<{ list: { id: string; name?: string }[] }>(k)
-      if (m && Array.isArray(m.list)) {
-        for (const p of m.list) {
-          if (!sh.list.some((x) => x.id === p.id)) {
-            sh.list.push({
-              id: p.id,
-              name: p.name || 'Proyecto',
-              estado: 'Concepto presentado',
-              created: Date.now(),
-            })
-            changed = true
+    const stored = read<{ list: Project[]; current: string | null }>(KEYS.projects)
+    const sh = stored && Array.isArray(stored.list) ? stored : { list: [], current: null }
+    // Migración de los registros del prototipo SOLO en el primer arranque:
+    // volver a mezclarlos en cada boot resucitaba proyectos borrados desde
+    // otro dispositivo (con estado y fecha falsos).
+    if (!stored) {
+      let changed = false
+      for (const k of [KEYS.planosList, KEYS.ventaList]) {
+        const m = read<{ list: { id: string; name?: string }[] }>(k)
+        if (m && Array.isArray(m.list)) {
+          for (const p of m.list) {
+            if (!sh.list.some((x) => x.id === p.id)) {
+              sh.list.push({
+                id: p.id,
+                name: p.name || 'Proyecto',
+                estado: 'Concepto presentado',
+                created: Date.now(),
+              })
+              changed = true
+            }
           }
         }
       }
+      if (changed) write(KEYS.projects, sh)
     }
-    if (changed) write(KEYS.projects, sh)
     setList(sh.list)
     setClientes(read<{ list: Cliente[] }>(KEYS.clientes)?.list || [])
     setFerias(read<{ list: Feria[] }>(KEYS.ferias)?.list || [])
@@ -124,9 +154,12 @@ export default function Inicio() {
     const reload = () => boot()
     window.addEventListener('pageshow', reload)
     window.addEventListener('focus', reload)
+    // El motor de sincronización avisa cuando refresca datos desde la nube.
+    window.addEventListener('ready-sync-pulled', reload)
     return () => {
       window.removeEventListener('pageshow', reload)
       window.removeEventListener('focus', reload)
+      window.removeEventListener('ready-sync-pulled', reload)
     }
   }, [boot])
 
@@ -163,7 +196,20 @@ export default function Inicio() {
   const updProveedor = (id: string, patch: Partial<Proveedor>) =>
     saveProveedores(proveedores.map((v) => (v.id === id ? { ...v, ...patch } : v)))
 
-  const ventaDatos = (id: string) => read<{ datos: any }>(KEYS.venta(id))?.datos || {}
+  // Cacheado por id: se llama en cada render (columna feria y búsqueda) y el
+  // payload completo del documento puede ser grande — reparsearlo por pulsación
+  // de tecla notaba en proyectos con muchas láminas.
+  const ventaCacheRef = useRef<Record<string, { raw: string | null; datos: any }>>({})
+  const ventaDatos = (id: string) => {
+    let raw: string | null = null
+    try { raw = localStorage.getItem(KEYS.venta(id)) } catch { /* ignore */ }
+    const c = ventaCacheRef.current[id]
+    if (c && c.raw === raw) return c.datos
+    let datos: any = {}
+    try { datos = (raw ? JSON.parse(raw) : null)?.datos || {} } catch { /* ignore */ }
+    ventaCacheRef.current[id] = { raw, datos }
+    return datos
+  }
 
   // ---- navigation: pin project into all three layers, then go ----
   const abrir = (id: string, target: 'venta' | 'planos') => {
@@ -187,13 +233,21 @@ export default function Inicio() {
   }
 
   const asignarCliente = (pId: string, cId: string) => {
+    const prev = list.find((x) => x.id === pId)
+    const prevCli = clienteById(prev?.clienteId)
     save(list.map((x) => (x.id === pId ? { ...x, clienteId: cId } : x)))
     const c = clienteById(cId)
+    if (!c) return // desasignar no borra lo que el usuario escribió en el documento
     const key = KEYS.venta(pId)
     const v = read<{ datos: any }>(key)
     if (v && v.datos) {
-      v.datos = { ...v.datos, cliente: c ? c.nombre : '', web: c ? c.web : v.datos.web || '' }
-      write(key, v)
+      // Rellenar solo si el campo está vacío o aún tiene el cliente anterior:
+      // no machacar un texto editado a mano en el Documento de venta.
+      const cur = String(v.datos.cliente || '').trim()
+      if (!cur || (prevCli && cur === prevCli.nombre)) {
+        v.datos = { ...v.datos, cliente: c.nombre, web: c.web || v.datos.web || '' }
+        write(key, v)
+      }
     }
   }
 
@@ -204,7 +258,7 @@ export default function Inicio() {
     let clienteId = f.clienteId || ''
     let cliente = clienteById(clienteId)
     if (!cliente && quickCliente && String(q.nombre || '').trim()) {
-      clienteId = 'c' + Date.now()
+      clienteId = uid('c')
       cliente = {
         id: clienteId,
         nombre: q.nombre.trim(),
@@ -228,7 +282,7 @@ export default function Inicio() {
       setFormError('Indica el nombre del proyecto o asigna un cliente.')
       return
     }
-    const id = 'p' + Date.now()
+    const id = uid('p')
     const hoy = new Date().toISOString().slice(0, 10)
     write(KEYS.venta(id), {
       fase: 'brief',
@@ -293,7 +347,7 @@ export default function Inicio() {
       try {
         const buf = await file.arrayBuffer()
         const text = await pdfText(buf.slice(0))
-        const docId = 'doc' + Date.now() + Math.floor(Math.random() * 1000)
+        const docId = uid('doc')
         await idbSet(docId, {
           name: file.name,
           blob: new Blob([buf], { type: 'application/pdf' }),
@@ -311,8 +365,16 @@ export default function Inicio() {
     setSubiendo(null)
   }
   const abrirDoc = async (docId: string) => {
+    // Abrir la ventana de forma síncrona (dentro del gesto de clic): si se
+    // abre tras el await, el bloqueador de ventanas emergentes la anula.
+    const w = window.open('about:blank', '_blank')
     const d = await idbGet(docId)
-    if (d && d.blob) window.open(URL.createObjectURL(d.blob), '_blank')
+    if (d && d.blob) {
+      const url = URL.createObjectURL(d.blob)
+      if (w) w.location.href = url
+      else window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } else if (w) w.close()
   }
 
   // ---- chat context ----
@@ -553,7 +615,7 @@ export default function Inicio() {
                 saveClientes([
                   ...clientes,
                   {
-                    id: 'c' + Date.now(),
+                    id: uid('c'),
                     nombre: '',
                     web: '',
                     contacto: '',
@@ -576,7 +638,7 @@ export default function Inicio() {
                 saveFerias([
                   ...ferias,
                   {
-                    id: 'f' + Date.now(),
+                    id: uid('f'),
                     nombre: '',
                     recinto: '',
                     fechas: '',
@@ -598,7 +660,7 @@ export default function Inicio() {
                 saveProveedores([
                   ...proveedores,
                   {
-                    id: 'v' + Date.now(),
+                    id: uid('v'),
                     nombre: '',
                     especialidad: '',
                     web: '',
@@ -616,7 +678,7 @@ export default function Inicio() {
         </div>
 
         {/* Tabs + search */}
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {(
             [
               ['proyectos', 'Proyectos'],
@@ -757,7 +819,7 @@ export default function Inicio() {
                 background: '#fff',
                 border: '1px solid #E0DED8',
                 borderRadius: 14,
-                overflow: 'hidden',
+                overflowX: 'auto',
                 boxShadow: '0 10px 30px rgba(23,22,26,0.05)',
               }}
             >
@@ -799,6 +861,14 @@ export default function Inicio() {
                         write(k, m)
                       }
                     }
+                    // Reflejar el nombre en el cajetín de los planos si el
+                    // usuario no lo había personalizado allí.
+                    const pk = KEYS.planos(p.id)
+                    const pl = read<any>(pk)
+                    if (pl?.project && pl.project.proyecto === p.name) {
+                      pl.project = { ...pl.project, proyecto: name }
+                      write(pk, pl)
+                    }
                   }}
                   onCliente={(cId) => asignarCliente(p.id, cId)}
                   onEstado={(nuevo) =>
@@ -837,6 +907,16 @@ export default function Inicio() {
                       setTimeout(() => setDelPend((cur) => (cur === p.id ? null : cur)), 3000)
                       return
                     }
+                    // Limpiar los blobs del proyecto en IndexedDB (imágenes del
+                    // documento de venta y DXF de los planos): antes quedaban
+                    // huérfanos ocupando espacio para siempre.
+                    const venta = read<any>(KEYS.venta(p.id))
+                    delVentaImgs(((venta?.imagenes as any[]) || []).map((im) => im.id).filter(Boolean))
+                    const planos = read<any>(KEYS.planos(p.id))
+                    for (const dr of (planos?.drawings as any[]) || []) {
+                      idbDel('dxf-' + p.id + '-' + dr.id)
+                      idbDel('dxf-' + dr.id)
+                    }
                     try {
                       localStorage.removeItem(KEYS.planos(p.id))
                       localStorage.removeItem(KEYS.venta(p.id))
@@ -851,13 +931,18 @@ export default function Inicio() {
                         write(k, m)
                       }
                     }
+                    const shp = read<{ list: Project[]; current: string | null }>(KEYS.projects)
+                    if (shp && shp.current === p.id) {
+                      shp.current = null
+                      write(KEYS.projects, shp)
+                    }
                     setDelPend(null)
                     save(list.filter((x) => x.id !== p.id))
                   }}
                 />
               ))}
 
-              {rows.length === 0 && (
+              {list.length === 0 && (
                 <EmptyGuide
                   onClientes={() => setTab('clientes')}
                   onFerias={() => setTab('ferias')}
@@ -897,7 +982,7 @@ export default function Inicio() {
                 }}
               />
             ))}
-            {clientRows.length === 0 && (
+            {clientes.length === 0 && (
               <EmptyBox>
                 No hay clientes todavía.
                 <br />
@@ -939,7 +1024,7 @@ export default function Inicio() {
                 }}
               />
             ))}
-            {provRows.length === 0 && (
+            {proveedores.length === 0 && (
               <EmptyBox>
                 No hay proveedores todavía.
                 <br />
@@ -967,9 +1052,16 @@ export default function Inicio() {
                 onDocFile={(ev) => onDocFile(f.id, ev)}
                 onOpenDoc={abrirDoc}
                 onDelDoc={(docId) => {
+                  if (delPendDoc !== docId) {
+                    setDelPendDoc(docId)
+                    setTimeout(() => setDelPendDoc((cur) => (cur === docId ? null : cur)), 3000)
+                    return
+                  }
+                  setDelPendDoc(null)
                   idbDel(docId)
                   updFeria(f.id, { docs: (f.docs || []).filter((x) => x.id !== docId) })
                 }}
+                delPendDoc={delPendDoc}
                 onDel={() => {
                   if (delPendF !== f.id) {
                     setDelPendF(f.id)
@@ -983,7 +1075,7 @@ export default function Inicio() {
                 }}
               />
             ))}
-            {feriaRows.length === 0 && (
+            {ferias.length === 0 && (
               <EmptyBox>
                 No hay ferias todavía.
                 <br />
@@ -1458,6 +1550,14 @@ function ProjectRow(props: {
     <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid #F1EFEA' }}>
       <div
         onClick={onAbrirVenta}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+            e.preventDefault()
+            onAbrirVenta()
+          }
+        }}
         title="Abrir el proyecto"
         style={{
           display: 'grid',
@@ -1535,6 +1635,9 @@ function ProjectRow(props: {
               {es}
             </option>
           ))}
+          {p.estado && !(ESTADOS as readonly string[]).includes(p.estado) && (
+            <option value={p.estado}>{p.estado}</option>
+          )}
         </select>
         <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10.5, color: '#8A867F' }}>
           {p.created ? fmtDate(p.created) : '—'}
@@ -1898,6 +2001,7 @@ function FeriaCard({
   onDocFile,
   onOpenDoc,
   onDelDoc,
+  delPendDoc,
   onDel,
 }: {
   f: Feria
@@ -1908,6 +2012,7 @@ function FeriaCard({
   onDocFile: (ev: React.ChangeEvent<HTMLInputElement>) => void
   onOpenDoc: (id: string) => void
   onDelDoc: (id: string) => void
+  delPendDoc: string | null
   onDel: () => void
 }) {
   const contactos = f.contactos || []
@@ -1989,10 +2094,10 @@ function FeriaCard({
               </span>
               <button
                 onClick={() => onDelDoc(d.id)}
-                title="Eliminar documento"
-                style={{ border: 'none', background: 'none', color: '#B4B0A8', fontSize: 13, cursor: 'pointer', padding: '0 2px', flex: 'none' }}
+                title={delPendDoc === d.id ? 'Confirmar eliminación' : 'Eliminar documento (pide confirmación)'}
+                style={{ border: 'none', background: 'none', color: delPendDoc === d.id ? '#C03A2B' : '#B4B0A8', fontSize: delPendDoc === d.id ? 10.5 : 13, fontWeight: delPendDoc === d.id ? 700 : 400, cursor: 'pointer', padding: '0 2px', flex: 'none', whiteSpace: 'nowrap' }}
               >
-                ×
+                {delPendDoc === d.id ? '¿Eliminar?' : '×'}
               </button>
             </div>
           ))}

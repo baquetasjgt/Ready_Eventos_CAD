@@ -101,6 +101,9 @@ function arcToPts(cx: number, cy: number, r: number, a1: number, a2: number) {
   let s = (a1 * Math.PI) / 180,
     t = (a2 * Math.PI) / 180
   while (t <= s) t += Math.PI * 2
+  // Un DXF corrupto puede traer ángulos gigantes: acotar el barrido a una
+  // vuelta completa para no teselar millones de puntos.
+  if (t - s > Math.PI * 2) t = s + Math.PI * 2
   const n = Math.max(8, Math.ceil((t - s) / (Math.PI / 16)))
   const pts: number[][] = []
   for (let q = 0; q <= n; q++) {

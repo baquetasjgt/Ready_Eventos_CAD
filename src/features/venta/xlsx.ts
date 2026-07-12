@@ -142,6 +142,7 @@ export function num(v: unknown): number {
   let s = String(v).trim().replace(/[€$\s]/g, '')
   if (!s) return NaN
   if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.')
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '') // es-ES: 12.500 = doce mil quinientos
   else s = s.replace(/,/g, '')
   const n = parseFloat(s)
   return isFinite(n) ? n : NaN

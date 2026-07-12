@@ -101,6 +101,7 @@ async function pushDoc(key: string): Promise<void> {
 
 // ---- pull ----
 async function pull(): Promise<void> {
+  lastPull = Date.now()
   for (const spec of LISTS) {
     const { data, error } = await supabase.from(spec.table).select('*')
     if (error) {
@@ -140,7 +141,16 @@ function flushKey(key: string): void {
   if (!fn) return
   delete pending[key]
   clearTimeout(timers[key])
-  fn().catch((e) => console.warn('[sync] push', key, e?.message))
+  fn().catch((e) => {
+    // Push fallido (red caída, 5xx): reencolar y reintentar, no descartar la
+    // edición en silencio.
+    console.warn('[sync] push', key, e?.message)
+    if (!pending[key]) {
+      pending[key] = fn
+      clearTimeout(timers[key])
+      timers[key] = setTimeout(() => flushKey(key), 10000)
+    }
+  })
 }
 
 /** Fire every pending push right now (on reload / tab hide, so nothing is lost). */
@@ -160,6 +170,22 @@ function onWrite(key: string, _value: unknown): void {
   if (docKeyInfo(key)) return schedule(key, () => pushDoc(key))
 }
 
+// Re-lectura de la nube al volver a la pestaña: una pestaña abierta mucho
+// tiempo dejaría de ver lo que crean los compañeros (el pull sólo corría al
+// entrar). No se refresca si hay escrituras locales pendientes de subir.
+let lastPull = 0
+async function refresh(): Promise<void> {
+  if (!started || Object.keys(pending).length) return
+  if (Date.now() - lastPull < 30000) return
+  lastPull = Date.now()
+  try {
+    await pull()
+    window.dispatchEvent(new Event('ready-sync-pulled'))
+  } catch (e: any) {
+    console.warn('[sync] refresh', e?.message)
+  }
+}
+
 let unloadHooked = false
 function hookUnloadFlush(): void {
   if (unloadHooked) return
@@ -168,8 +194,10 @@ function hookUnloadFlush(): void {
   // reload right after an edit doesn't lose the not-yet-synced change.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushAll()
+    else if (document.visibilityState === 'visible') refresh()
   })
   window.addEventListener('pagehide', flushAll)
+  window.addEventListener('focus', () => refresh())
 }
 
 // ---- public API ----
@@ -184,7 +212,11 @@ export async function initSync(): Promise<void> {
     const counts = await Promise.all(
       LISTS.map((l) => supabase.from(l.table).select('id', { count: 'exact', head: true })),
     )
-    const dbEmpty = counts.every((c) => (c.count ?? 0) === 0)
+    // Sólo sembrar si TODAS las consultas respondieron bien y todas están a 0:
+    // un error de red no debe confundirse con "base de datos vacía" (sembraría
+    // un estado local viejo encima de los datos del equipo).
+    const allOk = counts.every((c) => !c.error)
+    const dbEmpty = allOk && counts.every((c) => (c.count ?? 0) === 0)
     const localHasData = LISTS.some((l) => (read<any>(l.key)?.list || []).length > 0)
     if (dbEmpty && localHasData) await seedFromLocal()
     await pull()
@@ -197,6 +229,8 @@ export async function initSync(): Promise<void> {
 
 export function stopSync(): void {
   flushAll()
+  for (const k of Object.keys(timers)) clearTimeout(timers[k])
+  for (const k of Object.keys(pending)) delete pending[k]
   setWriteHook(null)
   started = false
 }

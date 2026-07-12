@@ -18,9 +18,26 @@ const directEndpoint = (model: string, key: string) =>
     key,
   )}`
 
+// content admite texto plano o bloques (texto + imágenes base64, formato que
+// ya usan los editores); toGeminiParts() los traduce a "parts" de Gemini.
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
-  content: string
+  content: string | ContentBlock[]
+}
+
+export function toGeminiParts(content: string | ContentBlock[]): any[] {
+  if (typeof content === 'string') return [{ text: content }]
+  const parts: any[] = []
+  for (const b of content || []) {
+    if (b && b.type === 'text' && b.text) parts.push({ text: b.text })
+    else if (b && b.type === 'image' && b.source?.data)
+      parts.push({ inlineData: { mimeType: b.source.media_type || 'image/png', data: b.source.data } })
+  }
+  return parts.length ? parts : [{ text: '' }]
 }
 
 export interface CompleteOptions {
@@ -30,7 +47,11 @@ export interface CompleteOptions {
   model?: string
 }
 
-const localKey = () => import.meta.env.VITE_GEMINI_API_KEY as string | undefined
+// Sólo en desarrollo: en builds de producción la referencia se elimina por
+// dead-code elimination, así la clave jamás se hornea en el bundle desplegado
+// (el proxy servidor es la única vía en producción).
+const localKey = () =>
+  import.meta.env.DEV ? (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) : undefined
 
 export function hasApiKey(): boolean {
   return !!localKey() || supabaseReady
@@ -76,7 +97,7 @@ export async function complete(opts: CompleteOptions): Promise<string> {
   const body: Record<string, unknown> = {
     contents: opts.messages.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
+      parts: toGeminiParts(m.content),
     })),
     generationConfig: { maxOutputTokens: opts.maxTokens ?? 1500 },
   }

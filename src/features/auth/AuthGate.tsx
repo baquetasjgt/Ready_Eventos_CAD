@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseReady } from '../../lib/supabase'
 import { initSync, stopSync } from '../../lib/sync'
@@ -94,6 +94,7 @@ function CloudGate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>('loading')
   const [session, setSession] = useState<Session | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const verifiedUser = useRef<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -105,9 +106,18 @@ function CloudGate({ children }: { children: ReactNode }) {
     let cancelled = false
     async function run() {
       if (!session) {
+        // Sesión caducada o cerrada desde otra pestaña: parar el espejo a la
+        // nube para que el próximo login vuelva a hacer pull.
+        if (verifiedUser.current) {
+          stopSync()
+          verifiedUser.current = null
+        }
         setPhase('signin')
         return
       }
+      // Un refresco de token del mismo usuario no debe desmontar la app
+      // (perdería el deshacer y el estado de los editores).
+      if (verifiedUser.current === session.user.id) return
       const { data, error } = await supabase.rpc('is_member')
       if (cancelled) return
       if (error) {
@@ -121,7 +131,10 @@ function CloudGate({ children }: { children: ReactNode }) {
       }
       setPhase('syncing')
       await initSync()
-      if (!cancelled) setPhase('ready')
+      if (!cancelled) {
+        verifiedUser.current = session.user.id
+        setPhase('ready')
+      }
     }
     run()
     return () => {

@@ -1,29 +1,19 @@
-// PDF text extraction via pdf.js, loaded on demand from CDN (same version the
-// prototype used). Used to index feria normativa PDFs for the assistant.
-
-const PDF_VERSION = '3.11.174'
-const CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDF_VERSION}`
+// PDF text extraction via pdf.js, empaquetado con la app (npm pdfjs-dist).
+// Antes se inyectaba desde un CDN sin verificación de integridad — un CDN
+// comprometido habría podido ejecutar código con la sesión del usuario — y
+// además fallaba sin conexión. El import dinámico lo separa en su propio
+// chunk: solo se descarga la primera vez que se procesa un PDF.
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.js?url'
 
 let loaderP: Promise<any> | null = null
 
 function loadPdfjs(): Promise<any> {
-  if ((window as any).pdfjsLib) return Promise.resolve((window as any).pdfjsLib)
-  if (loaderP) return loaderP
-  loaderP = new Promise((resolve, reject) => {
-    const s = document.createElement('script')
-    s.src = `${CDN}/pdf.min.js`
-    s.onload = () => {
-      const lib = (window as any).pdfjsLib
-      if (lib) {
-        lib.GlobalWorkerOptions.workerSrc = `${CDN}/pdf.worker.min.js`
-        resolve(lib)
-      } else {
-        reject(new Error('pdf.js no disponible'))
-      }
-    }
-    s.onerror = () => reject(new Error('No se pudo cargar pdf.js'))
-    document.head.appendChild(s)
-  })
+  if (!loaderP) {
+    loaderP = import('pdfjs-dist/legacy/build/pdf.js').then((lib: any) => {
+      lib.GlobalWorkerOptions.workerSrc = workerUrl
+      return lib
+    })
+  }
   return loaderP
 }
 
