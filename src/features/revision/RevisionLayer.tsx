@@ -197,19 +197,57 @@ function Postit({ m, idx, miembros, pageLabel, erase, sel }: {
       onPointerDown={(e) => { e.stopPropagation(); if (erase) { delMark(m.id) } else setRev({ sel: m.id }) }}
       style={{
         position: 'absolute', left: (m.x || 0) + '%', top: (m.y || 0) + '%',
-        width: '52mm', minHeight: '38mm', pointerEvents: 'auto',
-        background: m.color || '#FFE58A',
-        boxShadow: drag ? '0 18px 40px rgba(23,22,26,0.35)' : '0 8px 22px rgba(23,22,26,0.22)',
-        transform: `rotate(${idx % 2 ? 1.2 : -1.4}deg) scale(${drag ? 1.04 : 1})`,
+        width: '54mm', minHeight: '42mm', pointerEvents: 'auto',
+        // Papel con luz: degradado sobre el color base (que queda de respaldo)
+        backgroundColor: m.color || '#FFE58A',
+        backgroundImage: `linear-gradient(148deg, color-mix(in srgb, ${m.color || '#FFE58A'} 55%, white) 0%, ${m.color || '#FFE58A'} 52%, color-mix(in srgb, ${m.color || '#FFE58A'} 88%, #6b5500) 100%)`,
+        borderRadius: '1px 1px 2px 8px',
+        boxShadow: drag
+          ? '0 26px 46px rgba(23,22,26,0.38), 0 6px 14px rgba(23,22,26,0.22)'
+          : '0 14px 26px rgba(23,22,26,0.26), 0 3px 7px rgba(23,22,26,0.16)',
+        transform: `rotate(${idx % 2 ? 1.3 : -1.6}deg) scale(${drag ? 1.05 : 1})`,
         transition: drag ? 'none' : 'box-shadow 0.15s ease, transform 0.15s ease',
         display: 'flex', flexDirection: 'column',
-        outline: sel ? '2.5px solid #D6197E' : 'none', outlineOffset: 2,
+        outline: sel ? '2.5px solid #D6197E' : 'none', outlineOffset: 4,
         animation: 'tkPop 0.22s ease',
         cursor: erase ? 'not-allowed' : 'default',
       }}
     >
-      <div onPointerDown={headDown} title="Arrastra para mover" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', cursor: erase ? 'not-allowed' : 'grab', borderBottom: '1px solid rgba(23,22,26,0.10)' }}>
-        <span style={{ fontFamily: MONO, fontSize: '6.5pt', letterSpacing: '0.1em', color: 'rgba(23,22,26,0.55)', textTransform: 'uppercase', flex: 1 }}>
+      {/* chincheta roja */}
+      <svg
+        width="30" height="36" viewBox="0 0 30 36"
+        style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%) rotate(3deg)', zIndex: 3, pointerEvents: 'none', filter: 'drop-shadow(0 4px 3px rgba(23,22,26,0.35))' }}
+      >
+        <defs>
+          <radialGradient id="rvPinBall" cx="0.35" cy="0.3" r="0.85">
+            <stop offset="0%" stopColor="#FF8E8E" />
+            <stop offset="45%" stopColor="#E4353F" />
+            <stop offset="100%" stopColor="#9E1220" />
+          </radialGradient>
+          <linearGradient id="rvPinNeedle" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#8F949C" />
+            <stop offset="50%" stopColor="#E9EDF2" />
+            <stop offset="100%" stopColor="#767B84" />
+          </linearGradient>
+        </defs>
+        <rect x="13.9" y="18" width="2.2" height="15" rx="1.1" fill="url(#rvPinNeedle)" />
+        <ellipse cx="15" cy="19.5" rx="6.5" ry="3" fill="#B01722" />
+        <circle cx="15" cy="11" r="9.5" fill="url(#rvPinBall)" />
+        <ellipse cx="11.5" cy="7.5" rx="3" ry="2" fill="rgba(255,255,255,0.55)" transform="rotate(-24 11.5 7.5)" />
+      </svg>
+      {/* esquina inferior doblada */}
+      <div
+        style={{
+          position: 'absolute', bottom: 0, left: 0, width: 26, height: 26, pointerEvents: 'none', zIndex: 2,
+          clipPath: 'polygon(0 0, 100% 100%, 0 100%)',
+          backgroundImage: `linear-gradient(45deg, color-mix(in srgb, ${m.color || '#FFE58A'} 70%, #5a4a00) 0%, color-mix(in srgb, ${m.color || '#FFE58A'} 55%, white) 55%, #fff 100%)`,
+          borderRadius: '0 0 0 8px',
+          boxShadow: 'inset -3px 3px 5px rgba(23,22,26,0.18)',
+        }}
+      />
+
+      <div onPointerDown={headDown} title="Arrastra para mover" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 9px 2px', cursor: erase ? 'not-allowed' : 'grab' }}>
+        <span style={{ fontFamily: MONO, fontSize: '6.5pt', letterSpacing: '0.1em', color: 'rgba(23,22,26,0.5)', textTransform: 'uppercase', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {nombreCorto(m.autor)}
         </span>
         <Avatar email={asignada} size={17} />
@@ -217,7 +255,7 @@ function Postit({ m, idx, miembros, pageLabel, erase, sel }: {
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); completarPostit(m.id) }}
           title="Hecho: completa la tarea y quita el post-it"
-          style={{ border: 'none', background: 'rgba(255,255,255,0.5)', color: '#1F8A5B', borderRadius: 5, width: 17, height: 17, fontSize: 11, fontWeight: 800, cursor: 'pointer', padding: 0, lineHeight: 1 }}
+          style={{ border: 'none', background: 'rgba(255,255,255,0.55)', color: '#1F8A5B', borderRadius: 5, width: 17, height: 17, fontSize: 11, fontWeight: 800, cursor: 'pointer', padding: 0, lineHeight: 1, boxShadow: '0 1px 2px rgba(23,22,26,0.15)' }}
         >✓</button>
         <button
           onPointerDown={(e) => e.stopPropagation()}
@@ -233,15 +271,15 @@ function Postit({ m, idx, miembros, pageLabel, erase, sel }: {
         onPointerDown={(e) => e.stopPropagation()}
         onChange={(e) => setTexto(e.target.value)}
         onBlur={() => setPostitTexto(m.id, texto, pageLabel)}
-        style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', resize: 'none', padding: '7px 9px', fontSize: '9pt', lineHeight: 1.45, fontFamily: SANS, color: '#26252A', minHeight: '18mm' }}
+        style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', resize: 'none', padding: '4px 11px 6px', fontSize: '13.5pt', lineHeight: 1.25, fontFamily: "'Caveat','Segoe Print',cursive", fontWeight: 500, color: '#33301f', minHeight: '20mm' }}
       />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 7px 6px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px 7px 30px' }}>
         <select
           value={asignada}
           onPointerDown={(e) => e.stopPropagation()}
           onChange={(e) => setPostitAsignada(m.id, e.target.value)}
           title="Asignar la tarea a…"
-          style={{ flex: 1, minWidth: 0, border: '1px solid rgba(23,22,26,0.15)', background: 'rgba(255,255,255,0.55)', borderRadius: 6, padding: '3px 5px', fontSize: '7.5pt', fontFamily: SANS, color: '#26252A', outline: 'none' }}
+          style={{ flex: 1, minWidth: 0, border: '1px solid rgba(23,22,26,0.14)', background: 'rgba(255,255,255,0.5)', borderRadius: 6, padding: '3px 5px', fontSize: '7.5pt', fontFamily: SANS, color: '#26252A', outline: 'none' }}
         >
           <option value="">Sin asignar</option>
           {miembros.map((em) => <option key={em} value={em}>{nombreCorto(em)}</option>)}
