@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseReady } from '../../lib/supabase'
 import { initSync, stopSync } from '../../lib/sync'
 
-type Phase = 'loading' | 'signin' | 'notmember' | 'syncing' | 'ready'
+type Phase = 'loading' | 'signin' | 'notmember' | 'syncing' | 'ready' | 'error'
 
 const wrap: React.CSSProperties = {
   minHeight: '100vh',
@@ -83,11 +83,17 @@ function Brand() {
 }
 
 export default function AuthGate({ children }: { children: ReactNode }) {
-  // Offline / not configured → run the app as-is (local only).
+  // Offline / not configured → run the app as-is (local only). supabaseReady es
+  // constante de módulo, pero los hooks viven en CloudGate para no romper las
+  // reglas de hooks con este return temprano.
   if (!supabaseReady) return <>{children}</>
+  return <CloudGate>{children}</CloudGate>
+}
 
+function CloudGate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>('loading')
   const [session, setSession] = useState<Session | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -104,7 +110,12 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       }
       const { data, error } = await supabase.rpc('is_member')
       if (cancelled) return
-      if (error || !data) {
+      if (error) {
+        // Fallo de red/servidor: no es lo mismo que "no autorizado".
+        setPhase('error')
+        return
+      }
+      if (!data) {
         setPhase('notmember')
         return
       }
@@ -116,7 +127,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [session])
+  }, [session, attempt])
 
   if (phase === 'loading' || phase === 'syncing') {
     return (
@@ -133,6 +144,32 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (phase === 'signin') return <SignIn />
+
+  if (phase === 'error') {
+    return (
+      <div style={wrap}>
+        <div style={card}>
+          <Brand />
+          <div style={{ fontSize: 14, fontWeight: 700 }}>No se ha podido conectar</div>
+          <div style={{ fontSize: 12.5, color: '#6E6B66', lineHeight: 1.6 }}>
+            No hemos podido comprobar tu acceso (¿sin conexión?). Revisa tu red y vuelve a intentarlo.
+          </div>
+          <button onClick={() => { setPhase('loading'); setAttempt((a) => a + 1) }} style={primary}>
+            Reintentar
+          </button>
+          <button
+            onClick={() => {
+              stopSync()
+              supabase.auth.signOut()
+            }}
+            style={{ ...primary, background: '#17161A' }}
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (phase === 'notmember') {
     return (

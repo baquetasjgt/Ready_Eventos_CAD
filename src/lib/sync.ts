@@ -65,6 +65,13 @@ function docKeyInfo(key: string): { id: string; col: 'venta' | 'planos' } | null
   return null
 }
 
+// Ids que este dispositivo ha visto en la nube (último pull/push) por tabla.
+// Un borrado sólo se propaga si la fila estaba en esta lista y ya no está en
+// local — así un push nunca elimina filas recién creadas desde otro equipo.
+const knownKey = (key: string) => 'ready-sync-known:' + key
+const readKnown = (key: string): string[] | null => read<string[]>(knownKey(key))
+const writeKnown = (key: string, ids: string[]) => writeLocal(knownKey(key), ids)
+
 // ---- push ----
 async function pushList(spec: ListSpec): Promise<void> {
   const list: any[] = read<any>(spec.key)?.list || []
@@ -73,14 +80,13 @@ async function pushList(spec: ListSpec): Promise<void> {
     const { error } = await supabase.from(spec.table).upsert(rows)
     if (error) console.warn('[sync] upsert', spec.table, error.message)
   }
-  // delete rows removed locally
-  const { data: existing } = await supabase.from(spec.table).select('id')
   const localIds = new Set(rows.map((r) => r.id))
-  const toDelete = (existing || []).map((e: any) => e.id).filter((id: string) => !localIds.has(id))
+  const toDelete = (readKnown(spec.key) || []).filter((id) => !localIds.has(id))
   if (toDelete.length) {
     await supabase.from(spec.table).delete().in('id', toDelete)
     if (spec.table === 'proyectos') await supabase.from('documentos').delete().in('project_id', toDelete)
   }
+  writeKnown(spec.key, [...localIds])
 }
 
 async function pushDoc(key: string): Promise<void> {
@@ -107,6 +113,7 @@ async function pull(): Promise<void> {
     const list = (data || []).map((r: any) => spec.fromRow(r, prevById))
     if (spec.key === KEYS.projects) writeLocal(spec.key, { list, current: prev?.current ?? null })
     else writeLocal(spec.key, { list })
+    writeKnown(spec.key, list.map((x: any) => x.id))
   }
   const { data: docs } = await supabase.from('documentos').select('*')
   for (const d of docs || []) {
