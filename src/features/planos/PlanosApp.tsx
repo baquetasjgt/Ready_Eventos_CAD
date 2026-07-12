@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { KEYS, read, write } from '../../lib/storage'
+import { KEYS, read, write, idbGet, idbSet } from '../../lib/storage'
 import { complete, hasApiKey } from '../../lib/claude'
 import * as lib from './cad-lib'
 import type { Model } from './cad-lib'
@@ -270,9 +270,32 @@ export default function PlanosApp() {
 
   // ---- boot / load ----
   useEffect(() => {
+    // Rehidrata desde IndexedDB los DXF que no viajan en el guardado local
+    // (los grandes, que no caben en localStorage). Al resolverse, inyecta el
+    // modelo y quita el estado «pendiente» de esa lámina.
+    const hydrateFromIdb = async (ids: string[]) => {
+      for (const id of ids) {
+        try {
+          const stored = await idbGet('dxf-' + id)
+          if (!stored?.text) continue
+          const m = lib.parseDXF(stored.text)
+          if (!m.n) continue
+          models.current[id] = m
+          raws.current[id] = stored.text
+          setDocState((prev) => ({
+            ...prev,
+            drawings: prev.drawings.map((dr) =>
+              dr.id === id ? { ...dr, pending: false, unit: dr.unit || m.unitsGuess } : dr,
+            ),
+          }))
+        } catch (e) {}
+      }
+    }
+
     const saved = read<any>(KEYS.planos(projectId))
     if (saved && saved.project) {
       const drawings: Drawing[] = []
+      const pendingIds: string[] = []
       for (const dr of saved.drawings || []) {
         try {
           if (dr.sample) {
@@ -287,6 +310,7 @@ export default function PlanosApp() {
             }
           } else {
             drawings.push({ id: dr.id, name: dr.name, unit: dr.unit || 'm', pending: true })
+            if (!dr.sample) pendingIds.push(dr.id)
           }
         } catch (e) {}
       }
@@ -311,6 +335,7 @@ export default function PlanosApp() {
       })
       setZoom(saved.zoom || 0.5)
       setTab(saved.tab || 'proyecto')
+      if (pendingIds.length) hydrateFromIdb(pendingIds)
     } else {
       // primer arranque: plano de ejemplo
       const id = 'd1'
@@ -625,6 +650,9 @@ export default function PlanosApp() {
         const id = 'd' + d.seq
         models.current[id] = m
         raws.current[id] = text
+        // Copia íntegra del DXF en IndexedDB (sin el límite de tamaño de
+        // localStorage), para que un archivo grande sobreviva a la recarga.
+        idbSet('dxf-' + id, { name: file.name, blob: new Blob([text]), text })
         const frames = lib.detectFrames(m, m.unitsGuess, (ly) => isMarcoLayer(ly)) || []
         let newSheets: Sheet[], used: number
         if (frames.length) {
