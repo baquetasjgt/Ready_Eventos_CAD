@@ -16,6 +16,9 @@ const pick = (obj: any, cols: string[]) => {
   return o
 }
 
+// Nota: requiere la columna 'deleted' en proyectos (migración 2026-07-12_mejoras).
+// PostgREST exige que todas las filas del upsert tengan las mismas claves, así
+// que viaja siempre (null = proyecto activo).
 const proyectoToRow = (p: any) => ({
   id: p.id,
   name: p.name ?? '',
@@ -25,6 +28,7 @@ const proyectoToRow = (p: any) => ({
   prov_ids: p.provIds || [],
   hist: p.hist || [],
   created: p.created ?? null,
+  deleted: p.deleted ?? null,
 })
 const rowToProyecto = (r: any) => ({
   id: r.id,
@@ -35,6 +39,7 @@ const rowToProyecto = (r: any) => ({
   provIds: r.prov_ids || [],
   hist: r.hist || [],
   created: r.created ?? undefined,
+  deleted: r.deleted ?? undefined,
 })
 
 interface ListSpec {

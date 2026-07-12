@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { KEYS, read, write, idbGet, idbSet, idbDel } from '../../lib/storage'
+import { bajarTexto, borrarRuta, subirTexto } from '../../lib/files'
 import { complete, hasApiKey } from '../../lib/claude'
 import * as lib from './cad-lib'
 import type { Model } from './cad-lib'
@@ -324,6 +325,14 @@ export default function PlanosApp() {
             // Migración: los primeros guardados usaban la clave sin proyecto.
             stored = await idbGet('dxf-' + id)
             if (stored?.text) idbSet(dxfKey(id), stored)
+          }
+          if (!stored?.text) {
+            // No está en este dispositivo: probar la copia del equipo en Storage.
+            const remoto = await bajarTexto('dxf', projectId + '/' + id)
+            if (remoto) {
+              stored = { name: id + '.dxf', blob: new Blob([remoto]), text: remoto }
+              idbSet(dxfKey(id), stored)
+            }
           }
           if (!stored?.text) continue
           const m = lib.parseDXF(stored.text)
@@ -650,6 +659,7 @@ export default function PlanosApp() {
     delete raws.current[drawingId]
     idbDel(dxfKey(drawingId))
     idbDel('dxf-' + drawingId) // clave antigua sin proyecto
+    borrarRuta('dxf', [projectId + '/' + drawingId])
     up({
       drawings: doc.drawings.filter((x) => x.id !== drawingId),
       sheets: doc.sheets
@@ -736,6 +746,8 @@ export default function PlanosApp() {
         // Clave con el id del proyecto: los ids de dibujo (d10, d11…) se
         // repiten entre proyectos y sin prefijo se pisaban el DXF unos a otros.
         idbSet(dxfKey(id), { name: file.name, blob: new Blob([text]), text })
+        // Copia del equipo en Storage (en segundo plano)
+        subirTexto('dxf', projectId + '/' + id, text)
         const frames = lib.detectFrames(m, m.unitsGuess, (ly) => isMarcoLayer(ly)) || []
         let newSheets: Sheet[], used: number
         if (frames.length) {
@@ -1801,6 +1813,11 @@ export default function PlanosApp() {
       detectar={detectar}
       delDrawing={delDrawing}
       etiqSheet={etiqTarget()}
+      versionesPayload={() => {
+        const pl = buildPayload(doc)
+        // instantánea sin el DXF crudo (pesa; al restaurar se rehidrata de IDB/Storage)
+        return { ...pl, drawings: (pl.drawings || []).map((dr: any) => ({ ...dr, raw: undefined })) }
+      }}
       detectarZonas={detectarZonas}
       updZona={updZona}
       selZona={selZona}

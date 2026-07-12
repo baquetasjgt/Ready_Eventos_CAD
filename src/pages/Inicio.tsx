@@ -15,6 +15,7 @@ import {
 } from '../lib/storage'
 import { ESTADOS, COLORES } from '../lib/theme'
 import { pdfText } from '../lib/pdf'
+import { bajarBlob, bajarTexto, borrarPrefijo, borrarRuta, subirBlob, subirDataUrl, subirTexto } from '../lib/files'
 import ChatAssistant from '../features/inicio/ChatAssistant'
 import TareasPanel from '../features/tareas/TareasPanel'
 import NotasDrawer, { getSeen } from '../features/tareas/NotasDrawer'
@@ -75,6 +76,37 @@ const ROW_GRID =
 const uid = (prefix: string) =>
   prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 
+// Acceso a la base local de imágenes del Documento de venta (gencad-venta).
+function ventaImgsDb(): Promise<IDBDatabase> {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('gencad-venta', 1)
+    rq.onupgradeneeded = () => rq.result.createObjectStore('imgs')
+    rq.onsuccess = () => res(rq.result)
+    rq.onerror = () => rej(rq.error)
+  })
+}
+async function getVentaImg(id: string): Promise<string | null> {
+  try {
+    const db = await ventaImgsDb()
+    return await new Promise((res, rej) => {
+      const rq = db.transaction('imgs').objectStore('imgs').get(id)
+      rq.onsuccess = () => res(rq.result || null)
+      rq.onerror = () => rej(rq.error)
+    })
+  } catch { return null }
+}
+async function putVentaImg(id: string, src: string): Promise<void> {
+  try {
+    const db = await ventaImgsDb()
+    await new Promise<void>((res, rej) => {
+      const tx = db.transaction('imgs', 'readwrite')
+      tx.objectStore('imgs').put(src, id)
+      tx.oncomplete = () => res()
+      tx.onerror = () => rej(tx.error)
+    })
+  } catch { /* ignore */ }
+}
+
 // Borra de la base local de imágenes del Documento de venta (gencad-venta) los
 // blobs de un proyecto eliminado — antes quedaban huérfanos para siempre.
 function delVentaImgs(ids: string[]) {
@@ -96,6 +128,40 @@ function delVentaImgs(ids: string[]) {
 }
 const CONTACT_GRID =
   'minmax(110px,1.2fr) minmax(90px,1fr) minmax(90px,0.9fr) minmax(110px,1.1fr) max-content'
+
+// Borrado DEFINITIVO de un proyecto: payloads, blobs locales, Storage y
+// registros. Lo usan la papelera (eliminar definitivamente) y la autopurga.
+function purgarProyecto(pId: string) {
+  const venta = read<any>(KEYS.venta(pId))
+  delVentaImgs(((venta?.imagenes as any[]) || []).map((im) => im.id).filter(Boolean))
+  const planos = read<any>(KEYS.planos(pId))
+  for (const dr of (planos?.drawings as any[]) || []) {
+    idbDel('dxf-' + pId + '-' + dr.id)
+    idbDel('dxf-' + dr.id)
+  }
+  borrarPrefijo('imagenes', pId)
+  borrarPrefijo('dxf', pId)
+  borrarPrefijo('compartidos', pId)
+  try {
+    localStorage.removeItem(KEYS.planos(pId))
+    localStorage.removeItem(KEYS.venta(pId))
+  } catch { /* ignore */ }
+  for (const k of [KEYS.planosList, KEYS.ventaList]) {
+    const m = read<{ list: { id: string }[]; current: string | null }>(k)
+    if (m && m.list) {
+      m.list = m.list.filter((x) => x.id !== pId)
+      if (m.current === pId) m.current = m.list.length ? m.list[0].id : null
+      write(k, m)
+    }
+  }
+  const shp = read<{ list: Project[]; current: string | null }>(KEYS.projects)
+  if (shp && shp.current === pId) {
+    shp.current = null
+    write(KEYS.projects, shp)
+  }
+}
+
+const PAPELERA_DIAS = 30
 
 export default function Inicio() {
   const navigate = useNavigate()
@@ -150,6 +216,14 @@ export default function Inicio() {
         }
       }
       if (changed) write(KEYS.projects, sh)
+    }
+    // Autopurga: lo que lleve más de 30 días en la papelera se elimina del todo
+    const ahora = Date.now()
+    const caducados = sh.list.filter((p) => p.deleted && ahora - p.deleted > PAPELERA_DIAS * 86400000)
+    if (caducados.length) {
+      for (const p of caducados) purgarProyecto(p.id)
+      sh.list = sh.list.filter((p) => !caducados.some((c) => c.id === p.id))
+      write(KEYS.projects, sh)
     }
     setList(sh.list)
     setClientes(read<{ list: Cliente[] }>(KEYS.clientes)?.list || [])
@@ -238,6 +312,56 @@ export default function Inicio() {
       write(k, m)
     }
     navigate(`/${target}/${id}`)
+  }
+
+  // Duplicar proyecto: copia payloads con imágenes/DXF re-mapeados (blobs
+  // nuevos en local y en Storage) para que borrar uno no rompa el otro.
+  const duplicar = (p: Project) => {
+    const newId = uid('p')
+    const name = p.name + ' (copia)'
+    const venta = read<any>(KEYS.venta(p.id))
+    if (venta) {
+      const map: Record<string, string> = {}
+      for (const im of (venta.imagenes || []) as any[]) map[im.id] = 'im' + Math.random().toString(36).slice(2, 10)
+      const v2 = JSON.parse(JSON.stringify(venta))
+      v2.imagenes = (v2.imagenes || []).map((im: any) => ({ ...im, id: map[im.id] || im.id }))
+      v2.slides = (v2.slides || []).map((sl: any) => ({
+        ...sl,
+        imgs: (sl.imgs || []).map((q: string) => map[q] || q),
+        bloques: sl.bloques ? sl.bloques.map((b: any) => ({ ...b, imgId: map[b.imgId] || b.imgId })) : sl.bloques,
+        collage: sl.collage ? sl.collage.map((c: any) => ({ ...c, img: map[c.img] || c.img })) : sl.collage,
+      }))
+      write(KEYS.venta(newId), v2)
+      for (const [oldImg, newImg] of Object.entries(map)) {
+        getVentaImg(oldImg).then((src) => {
+          if (src) {
+            putVentaImg(newImg, src)
+            subirDataUrl('imagenes', newId + '/' + newImg, src)
+          }
+        })
+      }
+    }
+    const planos = read<any>(KEYS.planos(p.id))
+    if (planos) {
+      const pl2 = JSON.parse(JSON.stringify(planos))
+      if (pl2.project) pl2.project = { ...pl2.project, proyecto: name }
+      write(KEYS.planos(newId), pl2)
+      for (const dr of (planos.drawings || []) as any[]) {
+        idbGet('dxf-' + p.id + '-' + dr.id).then((stored: any) => {
+          if (stored) {
+            idbSet('dxf-' + newId + '-' + dr.id, stored)
+            if (stored.text) subirTexto('dxf', newId + '/' + dr.id, stored.text)
+          }
+        })
+      }
+    }
+    save([
+      {
+        id: newId, name, estado: 'Concepto presentado', clienteId: p.clienteId, feriaId: p.feriaId,
+        provIds: [...(p.provIds || [])], created: Date.now(), hist: [{ e: 'Concepto presentado', t: Date.now() }],
+      },
+      ...list,
+    ])
   }
 
   const asignarCliente = (pId: string, cId: string) => {
@@ -361,6 +485,9 @@ export default function Inicio() {
           blob: new Blob([buf], { type: 'application/pdf' }),
           text,
         })
+        // Copia del equipo en Storage (binario + texto extraído)
+        subirBlob('normativa', docId, new Blob([buf], { type: 'application/pdf' }))
+        subirTexto('normativa', docId + '.txt', text)
         const f = feriaById(feriaId)
         if (f)
           updFeria(feriaId, {
@@ -376,7 +503,15 @@ export default function Inicio() {
     // Abrir la ventana de forma síncrona (dentro del gesto de clic): si se
     // abre tras el await, el bloqueador de ventanas emergentes la anula.
     const w = window.open('about:blank', '_blank')
-    const d = await idbGet(docId)
+    let d = await idbGet(docId)
+    if (!d?.blob) {
+      // No está en este dispositivo: bajar la copia del equipo.
+      const blob = await bajarBlob('normativa', docId)
+      if (blob) {
+        d = { name: docId, blob, text: '' }
+        idbSet(docId, d)
+      }
+    }
     if (d && d.blob) {
       const url = URL.createObjectURL(d.blob)
       if (w) w.location.href = url
@@ -436,7 +571,7 @@ export default function Inicio() {
         for (const d of f.docs || []) {
           if (total > 90000) break
           const stored = await idbGet(d.id)
-          const t = stored?.text || ''
+          const t = stored?.text || (await bajarTexto('normativa', d.id + '.txt')) || ''
           if (!t) continue
           const cut = t.slice(0, 30000)
           total += cut.length
@@ -518,14 +653,16 @@ export default function Inicio() {
       ].join(' '),
     ).includes(q)
 
-  const rows = list.filter(matchProy)
+  const activos = list.filter((p) => !p.deleted)
+  const papelera = list.filter((p) => p.deleted)
+  const rows = activos.filter(matchProy)
   const clientRows = clientes.filter(matchCli)
   const feriaRows = ferias.filter(matchFer)
   const provRows = proveedores.filter(matchProv)
 
   const buscaSinResultados =
     !!q &&
-    ((tab === 'proyectos' && rows.length === 0 && list.length > 0) ||
+    ((tab === 'proyectos' && rows.length === 0 && activos.length > 0) ||
       (tab === 'clientes' && clientRows.length === 0 && clientes.length > 0) ||
       (tab === 'ferias' && feriaRows.length === 0 && ferias.length > 0) ||
       (tab === 'proveedores' && provRows.length === 0 && proveedores.length > 0))
@@ -938,48 +1075,21 @@ export default function Inicio() {
                   onNotas={() => setNotasProj(p.id)}
                   nNotas={notasAll.filter((n) => n.projectId === p.id).length}
                   notasNew={notasNuevasDe(p.id)}
+                  onDup={() => duplicar(p)}
                   onDel={() => {
                     if (delPend !== p.id) {
                       setDelPend(p.id)
                       setTimeout(() => setDelPend((cur) => (cur === p.id ? null : cur)), 3000)
                       return
                     }
-                    // Limpiar los blobs del proyecto en IndexedDB (imágenes del
-                    // documento de venta y DXF de los planos): antes quedaban
-                    // huérfanos ocupando espacio para siempre.
-                    const venta = read<any>(KEYS.venta(p.id))
-                    delVentaImgs(((venta?.imagenes as any[]) || []).map((im) => im.id).filter(Boolean))
-                    const planos = read<any>(KEYS.planos(p.id))
-                    for (const dr of (planos?.drawings as any[]) || []) {
-                      idbDel('dxf-' + p.id + '-' + dr.id)
-                      idbDel('dxf-' + dr.id)
-                    }
-                    try {
-                      localStorage.removeItem(KEYS.planos(p.id))
-                      localStorage.removeItem(KEYS.venta(p.id))
-                    } catch {
-                      /* ignore */
-                    }
-                    for (const k of [KEYS.planosList, KEYS.ventaList]) {
-                      const m = read<{ list: { id: string }[]; current: string | null }>(k)
-                      if (m && m.list) {
-                        m.list = m.list.filter((x) => x.id !== p.id)
-                        if (m.current === p.id) m.current = m.list.length ? m.list[0].id : null
-                        write(k, m)
-                      }
-                    }
-                    const shp = read<{ list: Project[]; current: string | null }>(KEYS.projects)
-                    if (shp && shp.current === p.id) {
-                      shp.current = null
-                      write(KEYS.projects, shp)
-                    }
                     setDelPend(null)
-                    save(list.filter((x) => x.id !== p.id))
+                    // Borrado suave: 30 días en la papelera, restaurable
+                    save(list.map((x) => (x.id === p.id ? { ...x, deleted: Date.now() } : x)))
                   }}
                 />
               ))}
 
-              {list.length === 0 && (
+              {activos.length === 0 && (
                 <EmptyGuide
                   onClientes={() => setTab('clientes')}
                   onFerias={() => setTab('ferias')}
@@ -987,6 +1097,45 @@ export default function Inicio() {
                 />
               )}
             </div>
+
+            {papelera.length > 0 && (
+              <div style={{ background: '#F4F3F0', border: '1px dashed #C9C5BC', borderRadius: 14, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#8A867F' }}>🗑 Papelera · {papelera.length}</span>
+                  <span style={{ fontSize: 10.5, color: '#B4B0A8' }}>se vacía sola a los {PAPELERA_DIAS} días</span>
+                </div>
+                {papelera.map((p) => {
+                  const dias = Math.max(0, PAPELERA_DIAS - Math.floor((Date.now() - (p.deleted || 0)) / 86400000))
+                  return (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#55524D', textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, color: '#B4B0A8', flex: 'none' }}>{dias} d restantes</span>
+                      <button
+                        onClick={() => save(list.map((x) => (x.id === p.id ? { ...x, deleted: undefined } : x)))}
+                        style={{ border: '1px solid #DCD9D2', background: '#fff', borderRadius: 7, padding: '5px 11px', fontSize: 11, fontWeight: 700, cursor: 'pointer', color: '#17161A', flex: 'none' }}
+                      >
+                        Restaurar
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (delPend !== 'purge-' + p.id) {
+                            setDelPend('purge-' + p.id)
+                            setTimeout(() => setDelPend((c) => (c === 'purge-' + p.id ? null : c)), 3000)
+                            return
+                          }
+                          setDelPend(null)
+                          purgarProyecto(p.id)
+                          save(list.filter((x) => x.id !== p.id))
+                        }}
+                        style={{ border: 'none', background: 'none', color: delPend === 'purge-' + p.id ? '#C03A2B' : '#B4B0A8', fontSize: 11, fontWeight: delPend === 'purge-' + p.id ? 800 : 600, cursor: 'pointer', flex: 'none' }}
+                      >
+                        {delPend === 'purge-' + p.id ? '¿Definitivo?' : 'Eliminar ya'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             <div style={{ fontSize: 11.5, color: '#8A867F', lineHeight: 1.6 }}>
               Pincha sobre una línea para entrar al proyecto. Dentro de cada proyecto tienes su{' '}
@@ -998,7 +1147,7 @@ export default function Inicio() {
 
         {/* Tareas del equipo */}
         {tab === 'tareas' && (
-          <TareasPanel proyectos={list} abrirNotas={(id) => setNotasProj(id)} />
+          <TareasPanel proyectos={activos} abrirNotas={(id) => setNotasProj(id)} />
         )}
 
         {/* Clientes */}
@@ -1101,6 +1250,7 @@ export default function Inicio() {
                   }
                   setDelPendDoc(null)
                   idbDel(docId)
+                  borrarRuta('normativa', [docId, docId + '.txt'])
                   updFeria(f.id, { docs: (f.docs || []).filter((x) => x.id !== docId) })
                 }}
                 delPendDoc={delPendDoc}
@@ -1111,7 +1261,10 @@ export default function Inicio() {
                     return
                   }
                   setDelPendF(null)
-                  for (const d of f.docs || []) idbDel(d.id)
+                  for (const d of f.docs || []) {
+                    idbDel(d.id)
+                    borrarRuta('normativa', [d.id, d.id + '.txt'])
+                  }
                   save(list.map((p) => (p.feriaId === f.id ? { ...p, feriaId: '' } : p)))
                   saveFerias(ferias.filter((x) => x.id !== f.id))
                 }}
@@ -1564,6 +1717,7 @@ function ProjectRow(props: {
   onQuitarProv: (id: string) => void
   onAbrirVenta: () => void
   onAbrirPlanos: () => void
+  onDup: () => void
   onNotas: () => void
   nNotas: number
   notasNew: boolean
@@ -1584,6 +1738,7 @@ function ProjectRow(props: {
     onQuitarProv,
     onAbrirVenta,
     onAbrirPlanos,
+    onDup,
     onNotas,
     nNotas,
     notasNew,
@@ -1713,6 +1868,13 @@ function ProjectRow(props: {
             }}
           >
             ⏱ {hist.length}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDup() }}
+            title="Duplicar proyecto (documento y planos incluidos)"
+            style={{ border: 'none', background: 'none', color: '#B4B0A8', fontSize: 13, cursor: 'pointer', padding: '2px 4px', whiteSpace: 'nowrap' }}
+          >
+            ⧉
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onNotas() }}

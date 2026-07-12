@@ -40,6 +40,8 @@ export interface Project {
   provIds?: string[]
   created: number
   hist?: HistEntry[]
+  /** Papelera: timestamp de borrado suave (null/ausente = activo). */
+  deleted?: number
 }
 
 export interface Cliente {

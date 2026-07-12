@@ -12,6 +12,9 @@ import { KEYS, read, write } from '../../lib/storage'
 import { complete, hasApiKey } from '../../lib/claude'
 import RevisionLayer from '../revision/RevisionLayer'
 import RevisionBar from '../revision/RevisionBar'
+import { bajarDataUrl, subirDataUrl } from '../../lib/files'
+import { supabase, supabaseReady } from '../../lib/supabase'
+import VersionesModal from '../versiones/VersionesModal'
 import { pdfText } from '../../lib/pdf'
 import * as XL from './xlsx'
 import type { Imagen, Slide, Presupuesto, Anota, CollageItem } from './types'
@@ -72,6 +75,13 @@ interface VState {
   vista?: 'doc' | 'grid'
   gridOver?: string | null
   imgDelPend?: string | null
+  pdfExporting?: string
+  modalVers?: boolean
+  modalShare?: boolean
+  shareBusy?: boolean
+  shareUrl?: string
+  shareCopied?: boolean
+  shareList?: { name: string; url: string }[]
 }
 
 const SANS = "'Archivo','Helvetica Neue',Helvetica,sans-serif"
@@ -511,6 +521,11 @@ export default class VentaApp extends Component<Props, VState> {
     for (const im of (saved.imagenes || [])) {
       let src = im.src
       if (!src) src = await this.idbGet(im.id)
+      if (!src) {
+        // No está en este dispositivo: intentar la copia del equipo en Storage.
+        src = await bajarDataUrl('imagenes', this.props.projectId + '/' + im.id)
+        if (src) this.idbPut(im.id, src)
+      }
       if (src) {
         imagenes.push({ id: im.id, name: im.name, desc: im.desc || '', src })
         if (im.src) this.idbPut(im.id, im.src)
@@ -620,6 +635,11 @@ export default class VentaApp extends Component<Props, VState> {
         tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error)
       })
     } catch (e) {}
+    // Copia del equipo: las imágenes del proyecto suben a Storage en segundo
+    // plano (las de la biblioteca local, 'slib-…', se quedan en el dispositivo).
+    if (/^im/.test(id) && typeof val === 'string') {
+      subirDataUrl('imagenes', this.props.projectId + '/' + id, val)
+    }
   }
   async idbGet(id: string): Promise<any> {
     try {
@@ -1596,6 +1616,103 @@ export default class VentaApp extends Component<Props, VState> {
   updSlide(id: string, patch: Partial<Slide>) {
     this.up({ slides: this.state.slides.map((x) => x.id === id ? { ...x, ...patch } : x) })
   }
+  // ---- PDF directo (mismas librerías empaquetadas que en Planos) ----
+  buildPdf = async (): Promise<any | null> => {
+    let HTI: any = null, JSPDF: any = null
+    try {
+      HTI = await import('html-to-image')
+      JSPDF = (await import('jspdf')).jsPDF
+    } catch { return null }
+    // vista documento, sin selecciones (nada rosa) y a tamaño natural
+    await new Promise<void>((res) => this.setState({ imgSel: null, dSel: null, dGhost: null, dTool: null, vista: 'doc' }, () => res()))
+    await new Promise((r) => setTimeout(r, 120))
+    try { await (document as any).fonts.ready } catch { /* ignore */ }
+    const pages = Array.from(document.querySelectorAll('.venta-page')) as HTMLElement[]
+    if (!pages.length) return null
+    let pdf: any = null
+    for (let i = 0; i < pages.length; i++) {
+      this.setState({ pdfExporting: (i + 1) + ' / ' + pages.length + '…' })
+      await new Promise((r) => setTimeout(r, 30))
+      const canvas = await HTI.toCanvas(pages[i], {
+        pixelRatio: 300 / 96,
+        backgroundColor: '#FFFFFF',
+        filter: (n: any) => !(n.getAttribute && (n.getAttribute('data-ui') || n.getAttribute('data-noprint'))),
+        style: { boxShadow: 'none', margin: '0' },
+      })
+      const img = canvas.toDataURL('image/jpeg', 0.92)
+      if (!pdf) pdf = new JSPDF({ unit: 'mm', format: [297, 210], orientation: 'l', compress: true })
+      else pdf.addPage([297, 210], 'l')
+      pdf.addImage(img, 'JPEG', 0, 0, 297, 210)
+      canvas.width = canvas.height = 0
+    }
+    return pdf
+  }
+
+  exportPdfFile = async () => {
+    if (this.state.pdfExporting) return
+    this.setState({ pdfExporting: 'Preparando…' })
+    try {
+      const pdf = await this.buildPdf()
+      if (!pdf) {
+        this.setState({ pdfExporting: '' })
+        setTimeout(() => window.print(), 80)
+        return
+      }
+      const nm = (this.state.projName || 'documento-venta').replace(/[\\/:*?"<>|]+/g, '-').trim()
+      pdf.save(nm + '.pdf')
+      this.setState({ pdfExporting: '' })
+    } catch {
+      this.setState({ pdfExporting: '' })
+      this.toast('No se pudo generar el PDF directo; se abre la impresión del navegador como alternativa.')
+      setTimeout(() => window.print(), 80)
+    }
+  }
+
+  // ---- compartir con el cliente: PDF en Storage + enlace firmado 60 días ----
+  compartir = async () => {
+    if (!supabaseReady) { this.toast('Compartir necesita conexión con la nube.'); return }
+    if (this.state.shareBusy) return
+    this.setState({ shareBusy: true, modalShare: true, shareUrl: '', shareCopied: false })
+    try {
+      const pdf = await this.buildPdf()
+      if (!pdf) throw new Error('no se pudo generar el PDF')
+      const blob: Blob = pdf.output('blob')
+      const token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10)
+      const path = this.props.projectId + '/' + token + '.pdf'
+      const { error } = await supabase.storage.from('compartidos').upload(path, blob, { upsert: true, contentType: 'application/pdf' })
+      if (error) throw new Error(error.message)
+      const { data, error: e2 } = await supabase.storage.from('compartidos').createSignedUrl(path, 60 * 86400)
+      if (e2 || !data?.signedUrl) throw new Error(e2?.message || 'no se pudo firmar el enlace')
+      let copied = false
+      try { await navigator.clipboard.writeText(data.signedUrl); copied = true } catch { /* http o permiso */ }
+      this.setState({ shareBusy: false, shareUrl: data.signedUrl, shareCopied: copied, pdfExporting: '' })
+      this.cargarShares()
+    } catch (err: any) {
+      this.setState({ shareBusy: false, pdfExporting: '', modalShare: false })
+      this.toast('No se pudo compartir: ' + err.message + (/(bucket|not found)/i.test(String(err.message)) ? ' — ¿está ejecutada la migración «mejoras»?' : ''))
+    }
+  }
+
+  cargarShares = async () => {
+    if (!supabaseReady) return
+    try {
+      const { data } = await supabase.storage.from('compartidos').list(this.props.projectId, { limit: 50 })
+      const out: { name: string; url: string }[] = []
+      for (const f of data || []) {
+        const { data: u } = await supabase.storage.from('compartidos').createSignedUrl(this.props.projectId + '/' + f.name, 60 * 86400)
+        if (u?.signedUrl) out.push({ name: f.name, url: u.signedUrl })
+      }
+      this.setState({ shareList: out })
+    } catch { /* ignore */ }
+  }
+
+  revocarShare = async (name: string) => {
+    try {
+      await supabase.storage.from('compartidos').remove([this.props.projectId + '/' + name])
+      this.cargarShares()
+    } catch { /* ignore */ }
+  }
+
   moveSlide(id: string, dir: number) {
     const arr = [...this.state.slides]
     const i = arr.findIndex((x) => x.id === id)
@@ -2147,9 +2264,9 @@ export default class VentaApp extends Component<Props, VState> {
       edKey1: (e: any) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur() } else if (e.key === 'Escape') e.target.blur() },
       edKeyN: (e: any) => { if (e.key === 'Escape') e.target.blur() },
       undoCol: this._undo.length ? '#17161A' : '#C9C5BC', redoCol: this._redo.length ? '#17161A' : '#C9C5BC',
-      // Antes de imprimir: vista documento (no la cuadrícula al 16 %) y sin
-      // selecciones activas (una anotación seleccionada salía rosa en el PDF).
-      exportPdf: () => this.setState({ imgSel: null, dSel: null, dGhost: null, dTool: null, vista: 'doc' }, () => setTimeout(() => window.print(), 60)),
+      exportPdf: this.exportPdfFile,
+      pdfExporting: s.pdfExporting || '',
+      compartir: this.compartir,
       imgToolbar: (() => { if (!s.imgSel) return false; const sl = s.slides.find((x) => x.id === s.imgSel!.sid); return !!(sl && (sl.imgs || [])[s.imgSel!.k]) })(),
       imgScale: s.imgSel ? this.getTr(s.imgSel.sid, s.imgSel.k).s : 1,
       onImgScale: (e: any) => { if (s.imgSel) this.setTr(s.imgSel.sid, s.imgSel.k, { s: +e.target.value }, true) },
@@ -2566,6 +2683,7 @@ export default class VentaApp extends Component<Props, VState> {
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <button onClick={v.onUndo} title="Deshacer (Ctrl+Z)" style={{ ...iconBtn, color: v.undoCol }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg></button>
             <button onClick={v.onRedo} title="Rehacer (Ctrl+Y)" style={{ ...iconBtn, color: v.redoCol }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></svg></button>
+            <button onClick={() => this.setState({ modalVers: true })} title="Versiones del documento (guardar y restaurar)" style={{ ...iconBtn, color: '#55524D' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 3" /></svg></button>
           </div>
           <div style={{ display: 'flex', gap: 2, background: '#ECEAE5', borderRadius: 8, padding: 3, flex: 'none' }}>
             <button onClick={v.goDoc} title="Vista de documento" style={{ border: 'none', borderRadius: 6, padding: '6px 11px', fontSize: 11, fontWeight: 700, cursor: 'pointer', background: v.grid ? 'transparent' : '#17161A', color: v.grid ? '#6E6B66' : '#fff' }}>Documento</button>
@@ -2578,7 +2696,11 @@ export default class VentaApp extends Component<Props, VState> {
               <span style={{ fontFamily: MONO, fontSize: 10, color: '#17161A', width: 36 }}>{v.zoomPct}</span>
             </label>
           )}
-          <button onClick={v.exportPdf} style={{ background: v.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Exportar PDF</button>
+          <button onClick={v.compartir} title="Enlace de solo lectura para el cliente (PDF, caduca a los 60 días)" style={{ background: '#fff', color: '#17161A', border: '1px solid #DCD9D2', borderRadius: 8, padding: '10px 14px', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg>
+            Compartir
+          </button>
+          <button onClick={v.exportPdf} style={{ background: v.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer', minWidth: 118 }}>{v.pdfExporting || 'Exportar PDF'}</button>
         </div>
 
         {v.hayLaminas && !v.grid && this.renderDrawToolbar(v)}
@@ -2627,7 +2749,64 @@ export default class VentaApp extends Component<Props, VState> {
 
         {v.modalPresu && this.renderPresuModal(v)}
         {v.imgToolbar && this.renderImgToolbar(v)}
+        {this.state.modalShare && this.renderShareModal()}
+        {this.state.modalVers && (
+          <VersionesModal
+            app="venta"
+            projectId={this.props.projectId}
+            getPayload={() => this.buildPayload(false)}
+            onClose={() => this.setState({ modalVers: false })}
+          />
+        )}
       </main>
+    )
+  }
+
+  renderShareModal() {
+    const s = this.state
+    const cerrar = () => this.setState({ modalShare: false })
+    return (
+      <div data-ui="1" onClick={cerrar} style={{ position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(23,22,26,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 26, width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 24px 70px rgba(23,22,26,0.35)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>Compartir con el cliente</div>
+            <button onClick={cerrar} style={{ border: 'none', background: 'none', fontSize: 18, color: '#8A867F', cursor: 'pointer' }}>×</button>
+          </div>
+          {s.shareBusy && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#6E6B66', fontSize: 12.5 }}>
+              <span style={{ width: 15, height: 15, border: '3px solid rgba(214,25,126,0.25)', borderTopColor: '#D6197E', borderRadius: '50%', display: 'inline-block', animation: 'gcspin 0.8s linear infinite' }} />
+              Generando el PDF y creando el enlace… {s.pdfExporting}
+            </div>
+          )}
+          {!s.shareBusy && s.shareUrl && (
+            <>
+              <div style={{ fontSize: 12.5, color: '#1F8A5B', fontWeight: 700 }}>
+                ✓ Enlace creado{s.shareCopied ? ' y copiado al portapapeles' : ''} — caduca en 60 días
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input readOnly value={s.shareUrl} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 0, padding: '9px 11px', border: '1px solid #DCD9D2', borderRadius: 8, fontSize: 11, fontFamily: MONO, background: '#FDFDFC' }} />
+                <button onClick={() => { navigator.clipboard?.writeText(s.shareUrl!).then(() => this.setState({ shareCopied: true })) }} style={{ border: 'none', background: '#17161A', color: '#fff', borderRadius: 8, padding: '9px 13px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', flex: 'none' }}>
+                  {s.shareCopied ? 'Copiado ✓' : 'Copiar'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11.5, color: '#8A867F', lineHeight: 1.6 }}>
+                Cualquiera con el enlace ve el documento en PDF, sin poder editarlo. El PDF es una foto de este momento: si cambias el documento, genera un enlace nuevo.
+              </div>
+            </>
+          )}
+          {(s.shareList || []).length > 0 && (
+            <div style={{ borderTop: '1px solid #ECEAE5', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#8A867F' }}>Enlaces activos de este proyecto</div>
+              {(s.shareList || []).map((sh) => (
+                <div key={sh.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <a href={sh.url} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#B0447E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sh.name}</a>
+                  <button onClick={() => this.revocarShare(sh.name)} title="Revocar: el enlace dejará de funcionar" style={{ border: '1px solid #DCD9D2', background: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer', color: '#C03A2B', flex: 'none' }}>Revocar</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     )
   }
 

@@ -6,6 +6,7 @@ import { GLYPH, glyphEl, SIM_OPTIONS } from './glyphs'
 import { read, KEYS } from '../../lib/storage'
 import RevisionLayer from '../revision/RevisionLayer'
 import RevisionBar from '../revision/RevisionBar'
+import VersionesModal from '../versiones/VersionesModal'
 import type { Sheet } from './types'
 import {
   ACCENT,
@@ -57,6 +58,7 @@ function crmInfo(projectId: string) {
 
 export default function PlanosView(p: any) {
   const doc = p.doc
+  const [versOpen, setVersOpen] = React.useState(false)
   const accent = ACCENT
   const caj = cajTheme(doc.cajStyle)
   const crm: any = crmInfo(p.projectId)
@@ -339,6 +341,7 @@ export default function PlanosView(p: any) {
             <button onClick={() => p.setVista('grid')} style={{ border: 'none', borderRadius: 6, padding: '6px 11px', fontSize: 11, fontWeight: 600, cursor: 'pointer', background: p.vista === 'grid' ? '#17161A' : 'transparent', color: p.vista === 'grid' ? '#fff' : '#6E6B66' }}>Cuadrícula</button>
           </div>
           <span style={{ fontFamily: MONO, fontSize: 9.5, color: p.saving ? '#B07A1F' : '#1F8A5B', flex: 'none' }}>{p.saving ? 'Guardando…' : 'Guardado ✓'}</span>
+          <button onClick={() => setVersOpen(true)} title="Versiones del documento (guardar y restaurar)" style={{ border: '1px solid #DCD9D2', background: '#fff', borderRadius: 7, width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: '#55524D', flex: 'none' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 3" /></svg></button>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: p.vista === 'grid' ? 0.35 : 1 }}>
             <span style={{ fontFamily: MONO, fontSize: 9.5, color: muted }}>ZOOM</span>
             <input type="range" min={0.25} max={1.4} step={0.05} value={p.zoom} onChange={(e) => p.setZoom(+e.target.value)} style={{ width: 110, accentColor: '#17161A' }} />
@@ -350,6 +353,9 @@ export default function PlanosView(p: any) {
         {/* draw toolbar */}
         {hayPlanos && <DrawToolbar p={p} />}
         {hayPlanos && p.vista !== 'grid' && <RevisionBar projectId={p.projectId} app="planos" />}
+        {versOpen && (
+          <VersionesModal app="planos" projectId={p.projectId} getPayload={p.versionesPayload} onClose={() => setVersOpen(false)} />
+        )}
 
         {/* notice toast */}
         {p.notice && (
