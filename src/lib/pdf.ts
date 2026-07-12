@@ -9,10 +9,19 @@ let loaderP: Promise<any> | null = null
 
 function loadPdfjs(): Promise<any> {
   if (!loaderP) {
-    loaderP = import('pdfjs-dist/legacy/build/pdf.js').then((lib: any) => {
+    loaderP = import('pdfjs-dist/legacy/build/pdf.js').then((mod: any) => {
+      // pdf.js legado es CommonJS/UMD: según cómo lo envuelva el empaquetador,
+      // la librería puede llegar como el propio módulo, como .default o como
+      // un binding interno. Buscar el objeto que tenga getDocument.
+      const cands = [mod, mod?.default, ...Object.values(mod || {})]
+      const lib = cands.find(
+        (c: any) => c && typeof c.getDocument === 'function' && c.GlobalWorkerOptions,
+      )
+      if (!lib) throw new Error('pdf.js no disponible')
       lib.GlobalWorkerOptions.workerSrc = workerUrl
       return lib
     })
+    loaderP.catch(() => { loaderP = null }) // permitir reintento si falló la carga
   }
   return loaderP
 }

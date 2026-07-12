@@ -95,6 +95,40 @@ const GLOBAL_CSS = `
 }
 `
 
+// Parse tolerante de un objeto JSON de la IA: quita vallas markdown, recorta
+// texto sobrante alrededor y, si la respuesta llegó cortada (los modelos
+// "pensantes" agotan tokens y truncan), intenta cerrar las llaves/corchetes
+// pendientes para rescatar lo que haya.
+function salvageObj(raw: string): any {
+  let t = String(raw || '').trim()
+  t = t.replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '')
+  const a = t.indexOf('{')
+  if (a < 0) throw new Error('la IA no ha devuelto el formato esperado — vuelve a intentarlo')
+  // 1) el mayor {...} válido recortando desde el final
+  for (let end = t.lastIndexOf('}'); end > a; end = t.lastIndexOf('}', end - 1)) {
+    try { return JSON.parse(t.slice(a, end + 1)) } catch { /* seguir recortando */ }
+  }
+  // 2) respuesta truncada: cerrar cadenas y llaves abiertas y reintentar
+  let s = t.slice(a)
+  let inStr = false, esc = false
+  const stack: string[] = []
+  for (const ch of s) {
+    if (inStr) {
+      if (esc) esc = false
+      else if (ch === '\\') esc = true
+      else if (ch === '"') inStr = false
+    } else if (ch === '"') inStr = true
+    else if (ch === '{') stack.push('}')
+    else if (ch === '[') stack.push(']')
+    else if (ch === '}' || ch === ']') stack.pop()
+  }
+  if (inStr) s += '"'
+  s = s.replace(/,\s*$/, '')
+  while (stack.length) s += stack.pop()
+  try { return JSON.parse(s) } catch { /* nada que rescatar */ }
+  throw new Error('la IA no ha devuelto el formato esperado — vuelve a intentarlo')
+}
+
 // Parse the AI's document JSON tolerantly: strips markdown fences, and if the
 // JSON is truncated (thinking models can cut the output mid-array) it salvages
 // every fully-formed slide object instead of failing outright.
@@ -1067,13 +1101,11 @@ export default class VentaApp extends Component<Props, VState> {
     if (!this.aiAvail()) throw new Error('la IA no está disponible en este entorno')
     const res = await this.claude({
       messages: [{ role: 'user', content: 'Texto extraído automáticamente de un PDF de presupuesto («' + nombre + '») — puede venir desordenado:\n\n' + text + '\n\nReconstruye el presupuesto como tabla limpia y profesional de Ready Eventos (stands de feria), CONSERVANDO la organización del documento original: mismos capítulos/secciones, mismas partidas en el mismo orden y mismos subtotales. Formato: un capítulo = fila con SOLO la primera celda rellena (resto vacías); un subtotal = fila cuyo primer texto empiece por "Subtotal". Columnas con sentido según los datos reales (p. ej. Concepto, Uds, Precio ud., Importe), números en formato español (1.234,56). NO incluyas la fila del TOTAL GENERAL ni el IVA (se calculan aparte). Si detectas condiciones o notas al pie, inclúyelas. No inventes importes. Responde SOLO con JSON: {"titulo":"...","cols":[...],"rows":[[...]],"condiciones":"..."}' }],
-      system: 'Eres el responsable comercial de Ready Eventos, empresa española de stands de feria. Reconstruyes presupuestos a partir de texto extraído de PDF con total fidelidad a las cifras.',
-      max_tokens: 5000,
+      system: 'Eres el responsable comercial de Ready Eventos, empresa española de stands de feria. Reconstruyes presupuestos a partir de texto extraído de PDF con total fidelidad a las cifras. Responde SOLO con el JSON pedido, sin explicaciones ni ```.',
+      max_tokens: 8000,
     })
-    const t = String(res); const a = t.indexOf('{'), b = t.lastIndexOf('}')
-    if (a < 0 || b <= a) throw new Error('formato inesperado')
-    const o = JSON.parse(t.slice(a, b + 1))
-    if (!o.cols || !o.rows || !o.rows.length) throw new Error('no se reconoció ninguna partida')
+    const o = salvageObj(res)
+    if (!Array.isArray(o.cols) || !Array.isArray(o.rows) || !o.rows.length) throw new Error('no se reconoció ninguna partida')
     this.up({
       notice: '',
       presupuesto: {
@@ -1094,11 +1126,9 @@ export default class VentaApp extends Component<Props, VState> {
     try {
       const res = await this.askClaude('Presupuesto actual de Ready Eventos:\n' + JSON.stringify({ titulo: pr.titulo, cols: pr.cols, rows: pr.rows, condiciones: pr.condiciones }) +
         '\n\nINSTRUCCIÓN DEL USUARIO:\n' + instr +
-        '\n\nAplica la instrucción. Puedes hacer cálculos (importes = uds × precio, descuentos, porcentajes, redondeos, agrupar partidas, añadir o quitar columnas y filas) — hazlos con precisión aritmética y números en formato español (1.234,56). CONSERVA la estructura de capítulos y subtotales salvo que la instrucción pida cambiarla (capítulo = fila con solo la primera celda rellena; subtotal = fila cuyo primer texto empiece por "Subtotal"; si cambias importes de un capítulo, recalcula su subtotal). NO añadas fila de total general (se calcula aparte a partir de los subtotales o, si no hay, de las partidas). No inventes precios que no se deduzcan de los datos o de la instrucción. Puedes actualizar también el título y las condiciones si la instrucción lo pide.\n\nResponde SOLO con JSON: {"titulo":"...","cols":[...],"rows":[[...]],"condiciones":"..."}', 'Eres el responsable comercial de Ready Eventos, empresa española de stands de feria. Editas presupuestos con precisión: cambias solo lo que se pide y calculas sin errores.', 5000)
-      const t = String(res); const a = t.indexOf('{'), b = t.lastIndexOf('}')
-      if (a < 0 || b <= a) throw new Error('formato inesperado')
-      const o = JSON.parse(t.slice(a, b + 1))
-      if (!o.cols || !o.rows) throw new Error('respuesta incompleta')
+        '\n\nAplica la instrucción. Puedes hacer cálculos (importes = uds × precio, descuentos, porcentajes, redondeos, agrupar partidas, añadir o quitar columnas y filas) — hazlos con precisión aritmética y números en formato español (1.234,56). CONSERVA la estructura de capítulos y subtotales salvo que la instrucción pida cambiarla (capítulo = fila con solo la primera celda rellena; subtotal = fila cuyo primer texto empiece por "Subtotal"; si cambias importes de un capítulo, recalcula su subtotal). NO añadas fila de total general (se calcula aparte a partir de los subtotales o, si no hay, de las partidas). No inventes precios que no se deduzcan de los datos o de la instrucción. Puedes actualizar también el título y las condiciones si la instrucción lo pide.\n\nResponde SOLO con JSON: {"titulo":"...","cols":[...],"rows":[[...]],"condiciones":"..."}', 'Eres el responsable comercial de Ready Eventos, empresa española de stands de feria. Editas presupuestos con precisión: cambias solo lo que se pide y calculas sin errores. Responde SOLO con el JSON pedido, sin explicaciones ni ```.', 8000)
+      const o = salvageObj(res)
+      if (!Array.isArray(o.cols) || !Array.isArray(o.rows)) throw new Error('respuesta incompleta')
       this.setState({ presuEdit: false })
       this.up({
         presuPrompt: '',
@@ -1212,11 +1242,9 @@ export default class VentaApp extends Component<Props, VState> {
     try {
       const res = await this.claude({
         messages: [{ role: 'user', content: 'Presupuesto en bruto exportado de Excel:\n' + JSON.stringify({ cols: pr.cols, filas: pr.rows }) + '\n\nAdáptalo a un presupuesto corporativo limpio de Ready Eventos (stands de feria) CONSERVANDO la organización del original: mismos capítulos/secciones, mismas partidas en el mismo orden y mismos subtotales. Formato: capítulo = fila con SOLO la primera celda rellena; subtotal = fila cuyo primer texto empiece por "Subtotal". Elimina solo filas vacías o basura de exportación. Conceptos con nombres claros, columnas con sentido, números en formato español (1.234,56). NO incluyas la fila del TOTAL GENERAL (se calcula aparte). No inventes importes. Responde SOLO con JSON: {"cols":[...],"rows":[[...]]}.' }],
-        system: 'Eres el responsable comercial de Ready Eventos, empresa española de stands de feria.', max_tokens: 4000,
+        system: 'Eres el responsable comercial de Ready Eventos, empresa española de stands de feria. Responde SOLO con el JSON pedido, sin explicaciones ni ```.', max_tokens: 8000,
       })
-      const t = String(res); const a = t.indexOf('{'), b = t.lastIndexOf('}')
-      if (a < 0 || b <= a) throw new Error('formato inesperado')
-      const o = JSON.parse(t.slice(a, b + 1))
+      const o = salvageObj(res)
       this.setState({ presuIA: false })
       if (Array.isArray(o.cols) && Array.isArray(o.rows)) this.up({ presupuesto: { ...this.state.presupuesto, cols: o.cols.map(String), rows: o.rows.map((r: any[]) => r.map(String)) } })
       else this.up({ notice: 'La IA no ha devuelto un presupuesto válido. Vuelve a intentarlo.' })
