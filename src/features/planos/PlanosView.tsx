@@ -316,7 +316,7 @@ export default function PlanosView(p: any) {
       {/* ========== MAIN ========== */}
       <main id="maincol" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* top bar */}
-        <div data-ui="1" style={{ minHeight: 58, flex: 'none', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px', padding: '8px 22px', background: '#F7F6F3', borderBottom: '1px solid ' + border }}>
+        <div data-ui="1" style={{ minHeight: 58, flex: 'none', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px', padding: '8px 60px 8px 22px', background: '#F7F6F3', borderBottom: '1px solid ' + border }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 'none' }}>
             <Link to="/" style={{ fontFamily: MONO, fontSize: 10, color: muted, textDecoration: 'none' }}>Proyectos</Link>
             <span style={{ color: '#C9C5BC', fontSize: 11 }}>›</span>

@@ -2459,7 +2459,7 @@ export default class VentaApp extends Component<Props, VState> {
     const iconBtn: React.CSSProperties = { border: '1px solid #DCD9D2', background: '#fff', borderRadius: 7, width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }
     return (
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <div data-ui="1" style={{ minHeight: 58, flex: 'none', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px', padding: '8px 22px', background: '#F7F6F3', borderBottom: '1px solid #E0DED8' }}>
+        <div data-ui="1" style={{ minHeight: 58, flex: 'none', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px', padding: '8px 60px 8px 22px', background: '#F7F6F3', borderBottom: '1px solid #E0DED8' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 'none' }}>
             <Link to="/" style={{ fontFamily: MONO, fontSize: 10, color: '#8A867F', textDecoration: 'none' }}>Proyectos</Link>
             <span style={{ color: '#C9C5BC', fontSize: 11 }}>›</span>

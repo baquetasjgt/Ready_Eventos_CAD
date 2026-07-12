@@ -270,47 +270,35 @@ function traducir(m: string): string {
 
 function AccountChip({ email }: { email: string }) {
   const [open, setOpen] = useState(false)
+  // Chip compacto: solo el avatar, para no solaparse con los controles de la
+  // barra superior (ZOOM, etc.). El correo completo aparece en el menú al pulsar.
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        title="Cuenta y equipo"
+        title={'Cuenta: ' + email}
         style={{
           position: 'fixed',
-          top: 14,
-          right: 16,
+          top: 12,
+          right: 14,
           zIndex: 60,
-          display: 'flex',
+          width: 34,
+          height: 34,
+          padding: 0,
+          borderRadius: '50%',
+          background: '#D6197E',
+          color: '#fff',
+          border: '2px solid #fff',
+          display: 'inline-flex',
           alignItems: 'center',
-          gap: 8,
-          background: '#fff',
-          border: '1px solid #DCD9D2',
-          borderRadius: 999,
-          padding: '6px 12px 6px 8px',
-          fontSize: 11.5,
-          fontWeight: 600,
-          color: '#17161A',
+          justifyContent: 'center',
+          fontSize: 13,
+          fontWeight: 800,
           cursor: 'pointer',
-          boxShadow: '0 6px 18px rgba(23,22,26,0.12)',
+          boxShadow: '0 6px 18px rgba(23,22,26,0.22)',
         }}
       >
-        <span
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: '50%',
-            background: '#D6197E',
-            color: '#fff',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 11,
-            fontWeight: 800,
-          }}
-        >
-          {(email[0] || '?').toUpperCase()}
-        </span>
-        <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</span>
+        {(email[0] || '?').toUpperCase()}
       </button>
       {open && <AccountModal email={email} onClose={() => setOpen(false)} />}
     </>
