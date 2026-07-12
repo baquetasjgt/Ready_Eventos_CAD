@@ -203,6 +203,32 @@ export default function PlanosApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, zoom, tab, ready])
 
+  // Vaciado inmediato del guardado pendiente al abandonar la página: al navegar
+  // a otra ruta (React Router desmonta el componente), al cerrar la pestaña o al
+  // ocultarla. Sin esto, un cambio hecho en los últimos 500 ms —por ejemplo
+  // importar o generar un DXF— se perdía si salías de Memoria y planos antes de
+  // que saltara el debounce. `flushRef` se reasigna en cada render para que la
+  // escritura use siempre el documento y el zoom/tab actuales.
+  const flushRef = useRef<() => void>(() => {})
+  flushRef.current = () => {
+    if (!ready || !persistReady.current) return
+    clearTimeout(persistT.current)
+    persistNow(doc)
+  }
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushRef.current()
+    }
+    const onPageHide = () => flushRef.current()
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', onPageHide)
+      flushRef.current() // vaciar al desmontar (salida a otra ruta)
+    }
+  }, [])
+
   // ---- doc mutation with undo/redo ----
   const up = useCallback((patch: Partial<Doc>) => {
     setDocState((prev) => {
