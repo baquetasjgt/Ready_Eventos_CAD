@@ -1,0 +1,70 @@
+<!-- Plantilla corporativa para Supabase → Authentication → Email Templates → "Confirm signup".
+     Variables de Supabase: {{ .ConfirmationURL }} (enlace), {{ .Email }} (destinatario).
+     Maquetación con tablas y estilos en línea: es lo único que respetan los clientes de correo. -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#E8E6E1; padding:32px 12px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px; width:100%;">
+        <!-- Cabecera -->
+        <tr>
+          <td style="background-color:#17161A; border-radius:16px 16px 0 0; padding:26px 34px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <img src="https://ready-eventos-cad.baquetasjgt.workers.dev/assets/logo.png" alt="Ready Eventos" height="42" style="display:block; height:42px; width:auto;" />
+                </td>
+                <td align="right" style="color:#8A867F; font-size:10px; letter-spacing:2px; text-transform:uppercase; font-family:'Courier New',monospace;">
+                  Generador de presentaciones CAD
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Cuerpo -->
+        <tr>
+          <td style="background-color:#FFFFFF; padding:38px 34px 30px;">
+            <div style="width:44px; height:5px; background-color:#D6197E; margin-bottom:22px;"></div>
+            <h1 style="margin:0 0 14px; font-size:22px; line-height:1.25; color:#17161A; font-weight:800;">
+              Confirma tu cuenta
+            </h1>
+            <p style="margin:0 0 12px; font-size:14px; line-height:1.65; color:#3A3840;">
+              Hola,
+            </p>
+            <p style="margin:0 0 26px; font-size:14px; line-height:1.65; color:#3A3840;">
+              Se ha creado una cuenta en el <strong>Generador de presentaciones CAD de Ready&nbsp;Eventos</strong> con la dirección <strong>{{ .Email }}</strong>. Pulsa el botón para confirmarla y empezar a trabajar:
+            </p>
+            <!-- Botón -->
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 26px;">
+              <tr>
+                <td align="center" bgcolor="#D6197E" style="border-radius:10px;">
+                  <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block; padding:14px 34px; font-size:14px; font-weight:700; color:#FFFFFF; text-decoration:none; border-radius:10px;">
+                    Confirmar mi cuenta
+                  </a>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:0 0 8px; font-size:12px; line-height:1.6; color:#8A867F;">
+              Si el botón no funciona, copia y pega este enlace en tu navegador:
+            </p>
+            <p style="margin:0 0 24px; font-size:11px; line-height:1.6; word-break:break-all;">
+              <a href="{{ .ConfirmationURL }}" style="color:#D6197E; text-decoration:underline;">{{ .ConfirmationURL }}</a>
+            </p>
+            <p style="margin:0; font-size:12px; line-height:1.6; color:#8A867F;">
+              El enlace caduca en 24 horas. Si no has solicitado esta cuenta, puedes ignorar este correo: no se activará nada sin la confirmación.
+            </p>
+          </td>
+        </tr>
+        <!-- Pie -->
+        <tr>
+          <td style="background-color:#F7F6F3; border-radius:0 0 16px 16px; border-top:1px solid #E0DED8; padding:20px 34px;">
+            <p style="margin:0 0 4px; font-size:12px; font-weight:700; color:#17161A;">Ready Eventos · Grupo IGC</p>
+            <p style="margin:0; font-size:11px; line-height:1.7; color:#8A867F;">
+              Calle Soria, 34 · 28864 Ajalvir (Madrid)<br />
+              +34 677 437 113 · <a href="mailto:ready@readyeventos.com" style="color:#D6197E; text-decoration:none;">ready@readyeventos.com</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
