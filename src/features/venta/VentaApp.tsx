@@ -89,6 +89,64 @@ const GLOBAL_CSS = `
 }
 `
 
+// Parse the AI's document JSON tolerantly: strips markdown fences, and if the
+// JSON is truncated (thinking models can cut the output mid-array) it salvages
+// every fully-formed slide object instead of failing outright.
+function salvageSlides(raw: string): { slides: any[] } {
+  let t = String(raw || '').trim()
+  t = t.replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '')
+  const a = t.indexOf('{')
+  if (a < 0) throw new Error('formato inesperado')
+  // 1) try to parse the largest valid {...} by trimming from the end
+  for (let end = t.lastIndexOf('}'); end > a; end = t.lastIndexOf('}', end - 1)) {
+    try {
+      const o = JSON.parse(t.slice(a, end + 1))
+      if (o && o.slides && o.slides.length) return o
+    } catch {
+      /* keep trimming */
+    }
+  }
+  // 2) repair a truncated "slides":[ … ] by reading complete objects only
+  const m = t.match(/"slides"\s*:\s*\[/)
+  if (m && m.index != null) {
+    const slides: any[] = []
+    let i = m.index + m[0].length
+    while (i < t.length) {
+      while (i < t.length && /[\s,]/.test(t[i])) i++
+      if (t[i] !== '{') break
+      let depth = 0,
+        j = i,
+        inStr = false,
+        esc = false
+      for (; j < t.length; j++) {
+        const ch = t[j]
+        if (inStr) {
+          if (esc) esc = false
+          else if (ch === '\\') esc = true
+          else if (ch === '"') inStr = false
+        } else if (ch === '"') inStr = true
+        else if (ch === '{') depth++
+        else if (ch === '}') {
+          depth--
+          if (depth === 0) {
+            j++
+            break
+          }
+        }
+      }
+      if (depth !== 0) break // object was cut off
+      try {
+        slides.push(JSON.parse(t.slice(i, j)))
+      } catch {
+        break
+      }
+      i = j
+    }
+    if (slides.length) return { slides }
+  }
+  throw new Error('formato inesperado')
+}
+
 export default class VentaApp extends Component<Props, VState> {
   xl: any
   _idbp: Promise<IDBDatabase> | null = null
@@ -1091,10 +1149,8 @@ export default class VentaApp extends Component<Props, VState> {
       '5. Textos: retórica arquitectónica (materialidad, luz, recorrido, escala, umbral, ritmo) + neuromarketing (emoción primero, beneficios sensoriales, lo que vive el visitante, verbos de acción, frases cortas). 45–85 palabras por lámina (salvo hero y cierre). Español. Sin listas ni markdown. No inventes cifras.\n' +
       '\nResponde EXCLUSIVAMENTE con JSON válido: {"slides":[{"tipo":"...","kicker":"...","titulo":"...","texto":"...","imgs":["im1"],"side":"left"}]}'
     try {
-      const res = await this.claude({ messages: [{ role: 'user', content: prompt }], system: 'Eres el director creativo de Ready Eventos, empresa española de diseño y montaje de stands de exposición para ferias (Grupo IGC). Compones presentaciones comerciales impecables.', max_tokens: 6000 })
-      const t = String(res); const a = t.indexOf('{'), b = t.lastIndexOf('}')
-      if (a < 0 || b <= a) throw new Error('formato inesperado')
-      const o = JSON.parse(t.slice(a, b + 1))
+      const res = await this.claude({ messages: [{ role: 'user', content: prompt }], system: 'Eres el director creativo de Ready Eventos, empresa española de diseño y montaje de stands de exposición para ferias (Grupo IGC). Compones presentaciones comerciales impecables. Responde SOLO con el JSON pedido, sin explicaciones ni ```.', max_tokens: 8000 })
+      const o = salvageSlides(res)
       if (!o.slides || !o.slides.length) throw new Error('sin láminas')
       const { slides, n } = this.sanitizeSlides(o.slides)
       if (!slides.length) throw new Error('sin láminas válidas')
