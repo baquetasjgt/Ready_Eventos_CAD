@@ -8,6 +8,8 @@ export const KEYS = {
   clientes: 'ready-clientes-v1',
   ferias: 'ready-ferias-v1',
   proveedores: 'ready-proveedores-v1',
+  notas: 'ready-notas-v1',
+  tareas: 'ready-tareas-v1',
   // per-app project registries + per-project payloads
   planosList: 'gencad-projects',
   ventaList: 'gencad-venta-projects',
@@ -77,6 +79,31 @@ export interface Proveedor {
   notas: string
   contactos?: Contacto[]
   created: number
+}
+
+// Nota de equipo sobre un proyecto (hilo de comentarios con menciones @).
+export interface Nota {
+  id: string
+  projectId: string
+  autor: string // email
+  texto: string
+  created: number
+  edited?: number
+}
+
+// Tarea asignable entre miembros del equipo.
+export interface Tarea {
+  id: string
+  titulo: string
+  detalle?: string
+  projectId?: string
+  asignada: string // email (puede estar vacía = sin asignar)
+  autor: string // email
+  estado: 'pendiente' | 'encurso' | 'hecha'
+  prioridad: 'alta' | 'normal' | 'baja'
+  vence?: string // fecha ISO yyyy-mm-dd
+  created: number
+  doneAt?: number
 }
 
 // ---- localStorage helpers ----

@@ -43,6 +43,27 @@ interface ListSpec {
   toRow: (x: any) => any
   fromRow: (x: any, prevById: Record<string, any>) => any
 }
+const notaToRow = (n: any) => ({
+  id: n.id, project_id: n.projectId || '', autor: n.autor || '', texto: n.texto || '',
+  created: n.created ?? null, edited: n.edited ?? null,
+})
+const rowToNota = (r: any) => ({
+  id: r.id, projectId: r.project_id || '', autor: r.autor || '', texto: r.texto || '',
+  created: r.created ?? undefined, edited: r.edited ?? undefined,
+})
+const tareaToRow = (t: any) => ({
+  id: t.id, titulo: t.titulo || '', detalle: t.detalle || '', project_id: t.projectId || null,
+  asignada: t.asignada || '', autor: t.autor || '', estado: t.estado || 'pendiente',
+  prioridad: t.prioridad || 'normal', vence: t.vence || null,
+  created: t.created ?? null, done_at: t.doneAt ?? null,
+})
+const rowToTarea = (r: any) => ({
+  id: r.id, titulo: r.titulo || '', detalle: r.detalle || '', projectId: r.project_id || '',
+  asignada: r.asignada || '', autor: r.autor || '', estado: r.estado || 'pendiente',
+  prioridad: r.prioridad || 'normal', vence: r.vence || '',
+  created: r.created ?? undefined, doneAt: r.done_at ?? undefined,
+})
+
 const LISTS: ListSpec[] = [
   { key: KEYS.clientes, table: 'clientes', toRow: (x) => pick(x, CLIENTE_COLS), fromRow: (r) => r },
   {
@@ -54,6 +75,8 @@ const LISTS: ListSpec[] = [
   },
   { key: KEYS.proveedores, table: 'proveedores', toRow: (x) => pick(x, PROV_COLS), fromRow: (r) => r },
   { key: KEYS.projects, table: 'proyectos', toRow: proyectoToRow, fromRow: rowToProyecto },
+  { key: KEYS.notas, table: 'notas', toRow: notaToRow, fromRow: rowToNota },
+  { key: KEYS.tareas, table: 'tareas', toRow: tareaToRow, fromRow: rowToTarea },
 ]
 
 const VENTA_PREFIX = KEYS.venta('')
@@ -120,6 +143,49 @@ async function pull(): Promise<void> {
   for (const d of docs || []) {
     if (d.venta) writeLocal(KEYS.venta(d.project_id), d.venta)
     if (d.planos) writeLocal(KEYS.planos(d.project_id), d.planos)
+  }
+}
+
+// Re-lee una sola tabla desde la nube (usado por realtime al llegar un cambio).
+async function pullOne(spec: ListSpec): Promise<void> {
+  const { data, error } = await supabase.from(spec.table).select('*')
+  if (error) return
+  const prev = read<any>(spec.key)
+  const prevById: Record<string, any> = {}
+  for (const it of prev?.list || []) prevById[it.id] = it
+  const list = (data || []).map((r: any) => spec.fromRow(r, prevById))
+  if (spec.key === KEYS.projects) writeLocal(spec.key, { list, current: prev?.current ?? null })
+  else writeLocal(spec.key, { list })
+  writeKnown(spec.key, list.map((x: any) => x.id))
+  window.dispatchEvent(new Event('ready-sync-pulled'))
+}
+
+// Cambios en vivo: cuando el compañero crea o edita una nota/tarea, Supabase
+// Realtime avisa y refrescamos esa tabla al momento (sin esperar al focus).
+let realtimeOn = false
+let rtChannel: any = null
+const rtTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+function startRealtime(): void {
+  if (realtimeOn || !supabaseReady) return
+  realtimeOn = true
+  try {
+    const ch = supabase.channel('ready-team')
+    rtChannel = ch
+    for (const table of ['notas', 'tareas', 'proyectos']) {
+      ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+        const spec = LISTS.find((l) => l.table === table)
+        if (!spec) return
+        // pequeño debounce: varios eventos seguidos → un solo pull
+        clearTimeout(rtTimers[table])
+        rtTimers[table] = setTimeout(() => {
+          // no pisar una edición local aún sin subir
+          if (!pending[spec.key]) pullOne(spec).catch(() => {})
+        }, 350)
+      })
+    }
+    ch.subscribe()
+  } catch {
+    /* sin realtime seguimos con el refresco al volver a la pestaña */
   }
 }
 
@@ -225,12 +291,16 @@ export async function initSync(): Promise<void> {
   }
   setWriteHook(onWrite)
   hookUnloadFlush()
+  startRealtime()
 }
 
 export function stopSync(): void {
   flushAll()
   for (const k of Object.keys(timers)) clearTimeout(timers[k])
   for (const k of Object.keys(pending)) delete pending[k]
+  try { rtChannel?.unsubscribe() } catch { /* ignore */ }
+  rtChannel = null
+  realtimeOn = false
   setWriteHook(null)
   started = false
 }

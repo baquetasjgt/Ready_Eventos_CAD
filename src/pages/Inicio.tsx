@@ -16,8 +16,13 @@ import {
 import { ESTADOS, COLORES } from '../lib/theme'
 import { pdfText } from '../lib/pdf'
 import ChatAssistant from '../features/inicio/ChatAssistant'
+import TareasPanel from '../features/tareas/TareasPanel'
+import NotasDrawer, { getSeen } from '../features/tareas/NotasDrawer'
+import { KIT_CSS, listNotas, listTareas, useLista } from '../features/tareas/kit'
+import { menciones, miembrosCache, myEmail } from '../lib/team'
+import type { Nota, Tarea } from '../lib/storage'
 
-type Tab = 'proyectos' | 'clientes' | 'ferias' | 'proveedores'
+type Tab = 'proyectos' | 'tareas' | 'clientes' | 'ferias' | 'proveedores'
 
 const emptyContacto = (): Contacto => ({ nombre: '', cargo: '', telefono: '', email: '' })
 const norm = (t: unknown) =>
@@ -112,6 +117,9 @@ export default function Inicio() {
   const [delPendF, setDelPendF] = useState<string | null>(null)
   const [delPendV, setDelPendV] = useState<string | null>(null)
   const [delPendDoc, setDelPendDoc] = useState<string | null>(null)
+  const [notasProj, setNotasProj] = useState<string | null>(null)
+  const [notasAll] = useLista<Nota>(listNotas)
+  const [tareasAll] = useLista<Tarea>(listTareas)
   const [subiendo, setSubiendo] = useState<string | null>(null)
   const [histOpen, setHistOpen] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
@@ -529,7 +537,9 @@ export default function Inicio() {
         ? 'Ferias'
         : tab === 'proveedores'
           ? 'Proveedores'
-          : 'Proyectos'
+          : tab === 'tareas'
+            ? 'Tareas del equipo'
+            : 'Proyectos'
   const buscaPh =
     tab === 'clientes'
       ? 'Buscar clientes…'
@@ -557,6 +567,20 @@ export default function Inicio() {
     letterSpacing: '0.01em',
   }
 
+  // --- colaboración: contadores para la pestaña Tareas y las filas ---
+  const me = myEmail()
+  const misPendientes = tareasAll.filter((t) => t.estado !== 'hecha' && t.asignada === me).length
+  const notasSeen = getSeen()
+  const notasNuevasDe = (pid: string) =>
+    notasAll.some((n) => n.projectId === pid && n.autor !== me && n.created > (notasSeen[pid] || 0))
+  const hayNotasNuevas = notasAll.some(
+    (n) => n.autor !== me && n.created > (notasSeen[n.projectId] || 0),
+  )
+  const hayMencionNueva = notasAll.some(
+    (n) => n.autor !== me && n.created > (notasSeen[n.projectId] || 0) && menciones(n.texto, miembrosCache()).includes(me),
+  )
+  void hayMencionNueva
+
   const delWith = (pend: boolean): React.CSSProperties => ({
     border: 'none',
     background: 'none',
@@ -577,6 +601,7 @@ export default function Inicio() {
         fontFamily: "'Archivo','Helvetica Neue',Helvetica,sans-serif",
       }}
     >
+      <style>{KIT_CSS}</style>
       <div
         style={{
           maxWidth: 1100,
@@ -682,6 +707,7 @@ export default function Inicio() {
           {(
             [
               ['proyectos', 'Proyectos'],
+              ['tareas', 'Tareas'],
               ['clientes', 'Clientes'],
               ['ferias', 'Ferias'],
               ['proveedores', 'Proveedores'],
@@ -710,10 +736,17 @@ export default function Inicio() {
                 }}
               >
                 {label}
+                {t === 'tareas' && misPendientes > 0 && (
+                  <span style={{ marginLeft: 7, background: tab === t ? '#D6197E' : '#17161A', color: '#fff', borderRadius: 999, padding: '1px 7px', fontSize: 9.5, fontWeight: 700 }}>{misPendientes}</span>
+                )}
+                {t === 'tareas' && hayNotasNuevas && (
+                  <span title="Hay notas nuevas del equipo" style={{ display: 'inline-block', marginLeft: 6, width: 7, height: 7, borderRadius: '50%', background: '#D6197E', animation: 'tkDot 1.4s ease infinite' }} />
+                )}
               </button>
             )
           })}
           <div style={{ flex: 1 }} />
+          {tab !== 'tareas' && (
           <div
             style={{
               display: 'flex',
@@ -771,6 +804,7 @@ export default function Inicio() {
               </button>
             )}
           </div>
+          )}
         </div>
 
         {buscaSinResultados && (
@@ -901,6 +935,9 @@ export default function Inicio() {
                   }
                   onAbrirVenta={() => abrir(p.id, 'venta')}
                   onAbrirPlanos={() => abrir(p.id, 'planos')}
+                  onNotas={() => setNotasProj(p.id)}
+                  nNotas={notasAll.filter((n) => n.projectId === p.id).length}
+                  notasNew={notasNuevasDe(p.id)}
                   onDel={() => {
                     if (delPend !== p.id) {
                       setDelPend(p.id)
@@ -957,6 +994,11 @@ export default function Inicio() {
               asignados al proyecto elegido.
             </div>
           </>
+        )}
+
+        {/* Tareas del equipo */}
+        {tab === 'tareas' && (
+          <TareasPanel proyectos={list} abrirNotas={(id) => setNotasProj(id)} />
         )}
 
         {/* Clientes */}
@@ -1090,6 +1132,11 @@ export default function Inicio() {
           </>
         )}
       </div>
+
+      {notasProj && (() => {
+        const pr = list.find((x) => x.id === notasProj)
+        return pr ? <NotasDrawer proyecto={pr} onClose={() => setNotasProj(null)} /> : null
+      })()}
 
       <ChatAssistant feriaOptions={feriaOptions} buildContext={buildContext} />
     </div>
@@ -1517,6 +1564,9 @@ function ProjectRow(props: {
   onQuitarProv: (id: string) => void
   onAbrirVenta: () => void
   onAbrirPlanos: () => void
+  onNotas: () => void
+  nNotas: number
+  notasNew: boolean
   onDel: () => void
 }) {
   const {
@@ -1534,6 +1584,9 @@ function ProjectRow(props: {
     onQuitarProv,
     onAbrirVenta,
     onAbrirPlanos,
+    onNotas,
+    nNotas,
+    notasNew,
     onDel,
   } = props
   const col = COLORES[p.estado] || COLORES['Concepto presentado']
@@ -1660,6 +1713,26 @@ function ProjectRow(props: {
             }}
           >
             ⏱ {hist.length}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onNotas() }}
+            title="Notas del equipo y tareas del proyecto"
+            style={{
+              position: 'relative',
+              border: '1px solid ' + (notasNew ? '#D6197E' : '#DCD9D2'),
+              background: notasNew ? '#FBF1F6' : '#fff',
+              borderRadius: 999,
+              padding: '4px 10px',
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: 'pointer',
+              color: notasNew ? '#A81463' : '#8A867F',
+              whiteSpace: 'nowrap',
+              fontFamily: "'JetBrains Mono',monospace",
+            }}
+          >
+            💬 {nNotas}
+            {notasNew && <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: '#D6197E', animation: 'tkDot 1.4s ease infinite' }} />}
           </button>
           <button
             onClick={onAbrirVenta}

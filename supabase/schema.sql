@@ -68,6 +68,19 @@ begin
 end $$;
 grant select, insert, delete on public.miembros to authenticated;
 
+-- Notas de proyecto + tareas de equipo (ver migrations/2026-07-12_notas_tareas.sql,
+-- que incluye RLS de miembros y alta en la publicación realtime).
+create table if not exists public.notas (
+  id text primary key, project_id text not null, autor text default '',
+  texto text default '', created bigint, edited bigint, updated_at timestamptz default now()
+);
+create table if not exists public.tareas (
+  id text primary key, titulo text default '', detalle text default '',
+  project_id text, asignada text default '', autor text default '',
+  estado text default 'pendiente', prioridad text default 'normal', vence text,
+  created bigint, done_at bigint, updated_at timestamptz default now()
+);
+
 -- Secreto de la IA como respaldo de la variable de entorno de la Edge Function.
 -- RLS activo SIN políticas: ningún rol de PostgREST puede leerla; sólo la
 -- función edge con service_role.
