@@ -17,6 +17,8 @@ import { ESTADOS, COLORES } from '../lib/theme'
 import { pdfText } from '../lib/pdf'
 import { bajarBlob, bajarTexto, borrarPrefijo, borrarRuta, subirBlob, subirDataUrl, subirTexto } from '../lib/files'
 import ChatAssistant from '../features/inicio/ChatAssistant'
+import ResumenSemanal from '../features/inicio/ResumenSemanal'
+import { fmtEUR, num } from '../features/venta/xlsx'
 import TareasPanel from '../features/tareas/TareasPanel'
 import NotasDrawer, { getSeen } from '../features/tareas/NotasDrawer'
 import { KIT_CSS, listNotas, listTareas, useLista } from '../features/tareas/kit'
@@ -129,6 +131,25 @@ function delVentaImgs(ids: string[]) {
 const CONTACT_GRID =
   'minmax(110px,1.2fr) minmax(90px,1fr) minmax(90px,0.9fr) minmax(110px,1.1fr) max-content'
 
+// Total del presupuesto de un documento de venta: suma de subtotales si los
+// hay; si no, suma del último importe de cada fila (misma regla que el editor).
+function totalPresupuesto(rows: string[][]): number {
+  if (!Array.isArray(rows) || !rows.length) return 0
+  const firstTxt = (r: string[]) => String(r.find((c) => String(c || '').trim()) || '').trim()
+  const esSub = (r: string[]) => /^(sub)?total/i.test(firstTxt(r))
+  const esCap = (r: string[]) => !esSub(r) && String(r[0] || '').trim() !== '' && r.slice(1).every((c) => !String(c || '').trim())
+  const ultimo = (r: string[]) => {
+    for (let i = r.length - 1; i > 0; i--) {
+      const n = num(r[i])
+      if (!isNaN(n)) return n
+    }
+    return NaN
+  }
+  const subs = rows.filter((r) => !esCap(r) && esSub(r)).map(ultimo).filter((n) => !isNaN(n))
+  if (subs.length) return subs.reduce((a, b) => a + b, 0)
+  return rows.filter((r) => !esCap(r) && !esSub(r)).map(ultimo).filter((n) => !isNaN(n)).reduce((a, b) => a + b, 0)
+}
+
 // Borrado DEFINITIVO de un proyecto: payloads, blobs locales, Storage y
 // registros. Lo usan la papelera (eliminar definitivamente) y la autopurga.
 function purgarProyecto(pId: string) {
@@ -232,6 +253,16 @@ export default function Inicio() {
   }, [])
 
   useEffect(() => {
+    const goto = (e: any) => {
+      const d = e?.detail || {}
+      if (d.tab) setTab(d.tab)
+      setBusca(d.busca || '')
+    }
+    window.addEventListener('ready-goto', goto)
+    return () => window.removeEventListener('ready-goto', goto)
+  }, [])
+
+  useEffect(() => {
     boot()
     const reload = () => boot()
     window.addEventListener('pageshow', reload)
@@ -281,17 +312,25 @@ export default function Inicio() {
   // Cacheado por id: se llama en cada render (columna feria y búsqueda) y el
   // payload completo del documento puede ser grande — reparsearlo por pulsación
   // de tecla notaba en proyectos con muchas láminas.
-  const ventaCacheRef = useRef<Record<string, { raw: string | null; datos: any }>>({})
-  const ventaDatos = (id: string) => {
+  const ventaCacheRef = useRef<Record<string, { raw: string | null; datos: any; total: number }>>({})
+  const ventaEntry = (id: string) => {
     let raw: string | null = null
     try { raw = localStorage.getItem(KEYS.venta(id)) } catch { /* ignore */ }
     const c = ventaCacheRef.current[id]
-    if (c && c.raw === raw) return c.datos
+    if (c && c.raw === raw) return c
     let datos: any = {}
-    try { datos = (raw ? JSON.parse(raw) : null)?.datos || {} } catch { /* ignore */ }
-    ventaCacheRef.current[id] = { raw, datos }
-    return datos
+    let total = 0
+    try {
+      const payload = raw ? JSON.parse(raw) : null
+      datos = payload?.datos || {}
+      total = totalPresupuesto(payload?.presupuesto?.rows || [])
+    } catch { /* ignore */ }
+    const entry = { raw, datos, total }
+    ventaCacheRef.current[id] = entry
+    return entry
   }
+  const ventaDatos = (id: string) => ventaEntry(id).datos
+  const ventaTotal = (id: string) => ventaEntry(id).total
 
   // ---- navigation: pin project into all three layers, then go ----
   const abrir = (id: string, target: 'venta' | 'planos') => {
@@ -767,9 +806,12 @@ export default function Inicio() {
             </div>
           </div>
           {tab === 'proyectos' && (
-            <button onClick={() => setCreating(true)} style={primaryBtn}>
-              + Nuevo proyecto
-            </button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <ResumenSemanal proyectos={activos} />
+              <button onClick={() => setCreating(true)} style={primaryBtn}>
+                + Nuevo proyecto
+              </button>
+            </div>
           )}
           {tab === 'clientes' && (
             <button
@@ -985,6 +1027,42 @@ export default function Inicio() {
         {/* Proyectos */}
         {tab === 'proyectos' && (
           <>
+            {activos.length > 0 && (() => {
+              // Pipeline comercial: proyectos y € presupuestado por estado
+              const porEstado = ESTADOS.map((es) => {
+                const del = activos.filter((p) => (p.estado || 'Concepto presentado') === es)
+                return { es, n: del.length, eur: del.reduce((acc, p) => acc + ventaTotal(p.id), 0) }
+              }).filter((x) => x.n > 0)
+              const totalEur = porEstado.reduce((a, x) => a + x.eur, 0)
+              return (
+                <div style={{ background: '#fff', border: '1px solid #E0DED8', borderRadius: 14, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 30px rgba(23,22,26,0.05)' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                    <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8A867F' }}>Pipeline</span>
+                    <span style={{ fontSize: 11.5, color: '#8A867F' }}>{activos.length} proyectos</span>
+                    <div style={{ flex: 1 }} />
+                    {totalEur > 0 && <span style={{ fontSize: 13.5, fontWeight: 800, color: '#17161A' }}>{fmtEUR(totalEur)} <span style={{ fontSize: 10, fontWeight: 400, color: '#8A867F' }}>presupuestado</span></span>}
+                  </div>
+                  <div style={{ display: 'flex', height: 10, borderRadius: 999, overflow: 'hidden', background: '#F2F0EC' }}>
+                    {porEstado.map((x) => {
+                      const c = COLORES[x.es] || COLORES['Concepto presentado']
+                      return <div key={x.es} title={x.es + ': ' + x.n} style={{ width: (x.n / activos.length) * 100 + '%', background: c[0], transition: 'width 0.4s ease' }} />
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                    {porEstado.map((x) => {
+                      const c = COLORES[x.es] || COLORES['Concepto presentado']
+                      return (
+                        <span key={x.es} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#55524D' }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: c[0], flex: 'none' }} />
+                          <strong style={{ color: '#17161A' }}>{x.n}</strong> {x.es}
+                          {x.eur > 0 && <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, color: '#8A867F' }}>· {fmtEUR(x.eur)}</span>}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
             <div
               style={{
                 background: '#fff',

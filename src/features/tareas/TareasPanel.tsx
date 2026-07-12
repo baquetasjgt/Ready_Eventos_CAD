@@ -35,6 +35,8 @@ export default function TareasPanel({ proyectos, abrirNotas }: {
   const [filtroProj, setFiltroProj] = useState('')
   const [filtroQuien, setFiltroQuien] = useState<'todas' | 'mias' | 'delegadas'>('todas')
   const [verHechas, setVerHechas] = useState(false)
+  const [modo, setModo] = useState<'lista' | 'semana'>('lista')
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null)
   const [expand, setExpand] = useState<string | null>(null)
   const [undoT, setUndoT] = useState<Tarea | null>(null)
   const undoTimer = useRef<any>(null)
@@ -208,15 +210,95 @@ export default function TareasPanel({ proyectos, abrirNotas }: {
         <button onClick={() => setFiltroQuien('mias')} style={chip(filtroQuien === 'mias')}>Para mí</button>
         <button onClick={() => setFiltroQuien('delegadas')} style={chip(filtroQuien === 'delegadas')}>Delegadas</button>
         <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 2, background: '#ECEAE5', borderRadius: 8, padding: 3 }}>
+          <button onClick={() => setModo('lista')} style={{ border: 'none', borderRadius: 6, padding: '5px 11px', fontSize: 11, fontWeight: 700, cursor: 'pointer', background: modo === 'lista' ? '#17161A' : 'transparent', color: modo === 'lista' ? '#fff' : '#6E6B66' }}>Lista</button>
+          <button onClick={() => setModo('semana')} style={{ border: 'none', borderRadius: 6, padding: '5px 11px', fontSize: 11, fontWeight: 700, cursor: 'pointer', background: modo === 'semana' ? '#17161A' : 'transparent', color: modo === 'semana' ? '#fff' : '#6E6B66' }}>Semana</button>
+        </div>
         <select value={filtroProj} onChange={(e) => setFiltroProj(e.target.value)} style={sel}>
           <option value="">Todos los proyectos</option>
           {proyectos.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </div>
 
-      <Grupo titulo="Para mí" lista={paraMi} vacio="Nada pendiente para ti. 🎉" />
-      <Grupo titulo="Para el equipo" lista={paraOtros} vacio="No has delegado ninguna tarea." />
-      {sinAsignar.length > 0 && <Grupo titulo="Sin asignar" lista={sinAsignar} />}
+      {modo === 'lista' && (
+        <>
+          <Grupo titulo="Para mí" lista={paraMi} vacio="Nada pendiente para ti. 🎉" />
+          <Grupo titulo="Para el equipo" lista={paraOtros} vacio="No has delegado ninguna tarea." />
+          {sinAsignar.length > 0 && <Grupo titulo="Sin asignar" lista={sinAsignar} />}
+        </>
+      )}
+
+      {modo === 'semana' && (() => {
+        // Semana vista: columnas de hoy a +6 días, más atrasadas y sin fecha.
+        // Arrastra una tarea a otra columna para replanificarla.
+        const hoyIso = new Date().toISOString().slice(0, 10)
+        const dias = Array.from({ length: 7 }, (_x, i) => {
+          const d = new Date()
+          d.setDate(d.getDate() + i)
+          return d.toISOString().slice(0, 10)
+        })
+        const cols: { key: string; titulo: string; sub?: string; lista: Tarea[]; vence?: string | null; alerta?: boolean }[] = [
+          { key: 'late', titulo: '⚠ Atrasadas', lista: visibles.filter((t) => t.vence && t.vence < hoyIso), alerta: true },
+          ...dias.map((iso, i) => {
+            const d = new Date(iso + 'T00:00:00')
+            return {
+              key: iso,
+              titulo: i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : d.toLocaleDateString('es-ES', { weekday: 'short' }),
+              sub: d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
+              lista: visibles.filter((t) => t.vence === iso),
+              vence: iso,
+            }
+          }),
+          { key: 'nodate', titulo: 'Sin fecha', lista: visibles.filter((t) => !t.vence || t.vence > dias[6]), vence: null },
+        ]
+        const miniCard = (t: Tarea) => (
+          <div
+            key={t.id}
+            draggable
+            onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id) }}
+            className="tk-card"
+            title={t.titulo + (t.detalle ? '\n' + t.detalle : '')}
+            style={{ background: '#fff', border: '1px solid #E0DED8', borderRadius: 9, padding: '7px 9px', display: 'flex', alignItems: 'flex-start', gap: 7, cursor: 'grab' }}
+          >
+            <button
+              className="tk-check"
+              title="Marcar como hecha"
+              onClick={() => completar(t)}
+              style={{ width: 15, height: 15, borderRadius: '50%', flex: 'none', cursor: 'pointer', border: '2px solid #C9C5BC', background: '#fff', padding: 0, marginTop: 1 }}
+            />
+            <span style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35, color: INK, fontWeight: 600, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' } as any}>
+              {t.prioridad === 'alta' && <span style={{ color: '#C03A2B' }}>▲ </span>}
+              {t.titulo}
+            </span>
+            <Avatar email={t.asignada} size={17} />
+          </div>
+        )
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, minmax(120px, 1fr))', gap: 8, overflowX: 'auto', paddingBottom: 6 }}>
+            {cols.map((c) => (
+              <div
+                key={c.key}
+                onDragOver={c.key !== 'late' ? (e) => { e.preventDefault(); if (dragOverCol !== c.key) setDragOverCol(c.key) } : undefined}
+                onDragLeave={() => { if (dragOverCol === c.key) setDragOverCol(null) }}
+                onDrop={c.key !== 'late' ? (e) => {
+                  e.preventDefault()
+                  setDragOverCol(null)
+                  const id = e.dataTransfer.getData('text/plain')
+                  if (id) upd(id, { vence: c.vence === null ? undefined : (c.vence as string) })
+                } : undefined}
+                style={{ display: 'flex', flexDirection: 'column', gap: 7, background: dragOverCol === c.key ? '#FBF1F6' : '#F4F3F0', border: '1px solid ' + (dragOverCol === c.key ? '#D6197E' : '#E8E6E0'), borderRadius: 12, padding: 9, minHeight: 130, transition: 'background 0.12s ease, border-color 0.12s ease' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: c.alerta ? '#C03A2B' : c.key === hoyIso ? ACCENT : '#8A867F' }}>{c.titulo}</span>
+                  {c.sub && <span style={{ fontFamily: MONO, fontSize: 8.5, color: '#B4B0A8' }}>{c.sub}</span>}
+                  <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 9, color: '#B4B0A8' }}>{c.lista.length || ''}</span>
+                </div>
+                {c.lista.map(miniCard)}
+              </div>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* hechas */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
