@@ -81,6 +81,7 @@ interface VState {
   modalVers?: boolean
   modalShare?: boolean
   shareBusy?: boolean
+  shareError?: string
   shareUrl?: string
   shareCopied?: boolean
   shareList?: { name: string; url: string }[]
@@ -1696,7 +1697,12 @@ export default class VentaApp extends Component<Props, VState> {
   compartir = async () => {
     if (!supabaseReady) { this.toast('Compartir necesita conexión con la nube.'); return }
     if (this.state.shareBusy) return
-    this.setState({ shareBusy: true, modalShare: true, shareUrl: '', shareCopied: false })
+    if (this.state.fase !== 'doc' || !this.state.slides.length) {
+      this.setState({ modalShare: true, shareBusy: false, shareError: 'Este proyecto aún no tiene láminas: genera o compón el documento antes de compartirlo.', shareUrl: '' })
+      return
+    }
+    this.setState({ shareBusy: true, modalShare: true, shareUrl: '', shareError: '', shareCopied: false })
+    this.cargarShares()
     try {
       const pdf = await this.buildPdf()
       if (!pdf) throw new Error('no se pudo generar el PDF')
@@ -1712,8 +1718,16 @@ export default class VentaApp extends Component<Props, VState> {
       this.setState({ shareBusy: false, shareUrl: data.signedUrl, shareCopied: copied, pdfExporting: '' })
       this.cargarShares()
     } catch (err: any) {
-      this.setState({ shareBusy: false, pdfExporting: '', modalShare: false })
-      this.toast('No se pudo compartir: ' + err.message + (/(bucket|not found)/i.test(String(err.message)) ? ' — ¿está ejecutada la migración «mejoras»?' : ''))
+      console.error('[compartir]', err)
+      // el error se queda visible dentro del modal, con su causa
+      const m = String(err?.message || err)
+      this.setState({
+        shareBusy: false,
+        pdfExporting: '',
+        shareError: /bucket|not.?found/i.test(m)
+          ? 'El almacén «compartidos» no existe todavía: ejecuta la migración «mejoras» en Supabase (SQL Editor) y vuelve a intentarlo.'
+          : 'No se pudo crear el enlace: ' + m,
+      })
     }
   }
 
@@ -2816,6 +2830,16 @@ export default class VentaApp extends Component<Props, VState> {
               <span style={{ width: 15, height: 15, border: '3px solid rgba(214,25,126,0.25)', borderTopColor: '#D6197E', borderRadius: '50%', display: 'inline-block', animation: 'gcspin 0.8s linear infinite' }} />
               Generando el PDF y creando el enlace… {s.pdfExporting}
             </div>
+          )}
+          {!s.shareBusy && s.shareError && (
+            <>
+              <div style={{ fontSize: 12.5, color: '#C03A2B', background: '#F9ECEA', border: '1px solid #E5C3BD', borderRadius: 8, padding: '10px 12px', lineHeight: 1.6 }}>
+                {s.shareError}
+              </div>
+              <button onClick={this.compartir} style={{ border: 'none', background: '#D6197E', color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 12, fontWeight: 800, cursor: 'pointer', alignSelf: 'flex-start' }}>
+                Reintentar
+              </button>
+            </>
           )}
           {!s.shareBusy && s.shareUrl && (
             <>
