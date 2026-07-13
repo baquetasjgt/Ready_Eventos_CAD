@@ -290,6 +290,30 @@ export default function PlanosApp() {
     }, 8000)
   }, [])
 
+  // Llegada desde una tarea con post-it (#lamina=<id de lámina>): abrir la
+  // vista documento, seleccionar la lámina y desplazarse hasta ella.
+  useEffect(() => {
+    const go = () => {
+      const m = window.location.hash.match(/lamina=([^&]+)/)
+      if (!m) return
+      const id = decodeURIComponent(m[1])
+      setVista('doc')
+      setTab('planos')
+      setSelSheet(id)
+      let tries = 0
+      const scroll = () => {
+        const el = document.querySelector(`[data-sheet-id="${CSS.escape(id)}"]`)
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        else if (tries++ < 25) setTimeout(scroll, 150)
+      }
+      scroll()
+    }
+    go()
+    window.addEventListener('hashchange', go)
+    return () => window.removeEventListener('hashchange', go)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Si se suelta el ratón fuera del plano (p. ej. sobre la barra lateral), el
   // arrastre de notas/croquis/zonas quedaba "pegado" al cursor: cancelarlo.
   useEffect(() => {

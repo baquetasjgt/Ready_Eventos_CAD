@@ -159,7 +159,7 @@ export default function TareasPanel({ proyectos, abrirNotas }: {
             <button
               className="tk-chip"
               title="Ver el post-it sobre la lámina"
-              onClick={() => navigate('/' + t.review!.app + '/' + t.projectId)}
+              onClick={() => navigate('/' + t.review!.app + '/' + t.projectId + '#lamina=' + encodeURIComponent(t.review!.pageId) + '&t=' + Date.now())}
               style={{ border: '1px solid #F0CFE1', background: '#FBF1F6', borderRadius: 999, padding: '2px 9px', fontFamily: MONO, fontSize: 9, color: '#A81463', cursor: 'pointer', whiteSpace: 'nowrap' }}
             >
               📌 {t.review.app === 'venta' ? 'Documento de venta' : 'Memoria y planos'}

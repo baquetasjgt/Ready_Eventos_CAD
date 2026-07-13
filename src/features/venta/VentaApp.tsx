@@ -301,6 +301,8 @@ export default class VentaApp extends Component<Props, VState> {
       extractPDFText: (buf: ArrayBuffer) => pdfText(buf),
     }
     this.boot()
+    this._revScroll()
+    window.addEventListener('hashchange', this._revScroll)
     if (!this._dKeys) {
       this._dKeys = (ev: KeyboardEvent) => {
         const tag = ((ev.target as any) && (ev.target as any).tagName) || ''
@@ -327,7 +329,25 @@ export default class VentaApp extends Component<Props, VState> {
     }
   }
 
+  // Llegada desde una tarea con post-it (#lamina=<id>): desplazarse hasta la
+  // lámina en cuanto esté renderizada.
+  _revScroll = () => {
+    const m = window.location.hash.match(/lamina=([^&]+)/)
+    if (!m) return
+    const id = decodeURIComponent(m[1])
+    this.setState({ vista: 'doc' }, () => {
+      let tries = 0
+      const go = () => {
+        const el = document.querySelector(`[data-rev-page="${CSS.escape(id)}"]`)
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        else if (tries++ < 25) setTimeout(go, 150)
+      }
+      go()
+    })
+  }
+
   componentWillUnmount() {
+    window.removeEventListener('hashchange', this._revScroll)
     if (this._dKeys) document.removeEventListener('keydown', this._dKeys)
     clearTimeout(this._pt)
     clearTimeout(this._ntT)
@@ -2965,7 +2985,7 @@ export default class VentaApp extends Component<Props, VState> {
       <div className="venta-ph" onDragOver={im.over} onDragLeave={im.leave} onDrop={im.drop} title="Suelta aquí una imagen" style={{ position: 'absolute', inset: 0, outline: im.hlOl, outlineOffset: '-2mm', animation: im.hlAnim, background: dark ? 'repeating-linear-gradient(45deg,#2A2930 0 10px,#232229 10px 20px)' : 'repeating-linear-gradient(45deg,#F2F0EC 0 10px,#E9E6E0 10px 20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: '9pt', color: '#8A867F' }}>{label}</div>
     )
     return (
-      <div key={idx} className="venta-page" data-page="1" data-screen-label={sl.label} onContextMenu={sl.onCtx} style={{ width: '297mm', height: '210mm', flex: 'none', background: sl.pageBg, boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: v.grid ? 0 : 36, position: 'relative', overflow: 'hidden' }}>
+      <div key={idx} className="venta-page" data-page="1" data-rev-page={sl.slId} data-screen-label={sl.label} onContextMenu={sl.onCtx} style={{ width: '297mm', height: '210mm', flex: 'none', background: sl.pageBg, boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: v.grid ? 0 : 36, position: 'relative', overflow: 'hidden' }}>
         {sl.dSvg}
         <RevisionLayer app="venta" projectId={this.props.projectId} pageId={sl.slId} pageLabel={sl.label} />
         {v.grid && (
