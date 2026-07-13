@@ -4,14 +4,14 @@
 import { KEYS, read, write, type Revision, type Tarea } from '../../lib/storage'
 import { myEmail } from '../../lib/team'
 
-export type RevTool = 'postit' | 'draw' | 'hi' | 'arrow' | 'erase' | null
+export type RevTool = 'select' | 'postit' | 'draw' | 'hi' | 'arrow' | 'erase' | null
 
 export const POSTIT_COLORS = ['#FFE58A', '#FFC4DE', '#BDE3FF', '#C9F2C7']
 export const uid = (p: string) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 
 // ---- estado de herramienta (compartido por barra y capas) ----
-type State = { tool: RevTool; color: string; visible: boolean; sel: string | null }
-const state: State = { tool: null, color: POSTIT_COLORS[0], visible: true, sel: null }
+type State = { tool: RevTool; color: string; visible: boolean; sel: string | null; multi: string[] }
+const state: State = { tool: null, color: POSTIT_COLORS[0], visible: true, sel: null, multi: [] }
 const subs = new Set<() => void>()
 export function revState(): Readonly<State> { return state }
 export function setRev(patch: Partial<State>): void {
@@ -95,6 +95,25 @@ export function completarPostit(id: string): void {
   if (!mark?.tareaId) return
   saveTareasR(listTareasR().map((t) => (t.id === mark.tareaId ? { ...t, estado: 'hecha' as const, doneAt: Date.now() } : t)))
   if (state.sel === id) setRev({ sel: null })
+}
+
+/** Borra varias marcas a la vez (selección por recuadro): los post-its
+ *  arrastran sus trazos ligados y sus tareas del listado. */
+export function delMarks(ids: string[]): void {
+  if (!ids.length) return
+  const all = listRevs()
+  const drop = new Set(ids)
+  for (const m of all) {
+    if (m.kind === 'postit' && drop.has(m.id)) {
+      for (const r of all) if (r.postitId === m.id) drop.add(r.id)
+    }
+  }
+  const tareasDrop = new Set(
+    all.filter((m) => m.kind === 'postit' && drop.has(m.id) && m.tareaId).map((m) => m.tareaId as string),
+  )
+  if (tareasDrop.size) saveTareasR(listTareasR().filter((t) => !tareasDrop.has(t.id)))
+  saveRevs(all.filter((r) => !drop.has(r.id)))
+  setRev({ multi: [], sel: state.sel && drop.has(state.sel) ? null : state.sel })
 }
 
 /** Borra una marca; un post-it arrastra sus trazos y su tarea. */

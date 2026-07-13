@@ -40,6 +40,8 @@ export default function RevisionLayer({ app, projectId, pageId, pageLabel }: {
   const ref = useRef<HTMLDivElement>(null)
   const [live, setLive] = useState<number[][] | null>(null)
   const drawing = useRef<{ tool: 'draw' | 'hi' | 'arrow'; pts: number[][] } | null>(null)
+  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const marqueeStart = useRef<[number, number] | null>(null)
 
   if (!st.visible) return null
   const marks = marcasDe(app, projectId, pageId)
@@ -50,6 +52,10 @@ export default function RevisionLayer({ app, projectId, pageId, pageLabel }: {
     return [((ev.clientX - r.left) / r.width) * 100, ((ev.clientY - r.top) / r.height) * 100]
   }
 
+  // dimensiones aproximadas de un post-it en % de la lámina (54×42 mm)
+  const PW = (54 / 297) * 100
+  const PH = (42 / 210) * 100
+
   const down = (ev: React.PointerEvent) => {
     if (!st.tool || st.tool === 'erase') return
     ev.preventDefault()
@@ -59,11 +65,24 @@ export default function RevisionLayer({ app, projectId, pageId, pageLabel }: {
       crearPostit(app, projectId, pageId, Math.min(x, 82), Math.min(y, 74), pageLabel)
       return
     }
+    if (st.tool === 'select') {
+      setRev({ multi: [], sel: null })
+      marqueeStart.current = [x, y]
+      setMarquee({ x1: x, y1: y, x2: x, y2: y })
+      ;(ev.target as Element).setPointerCapture?.(ev.pointerId)
+      return
+    }
     drawing.current = { tool: st.tool, pts: [[x, y]] }
     setLive([[x, y]])
     ;(ev.target as Element).setPointerCapture?.(ev.pointerId)
   }
   const move = (ev: React.PointerEvent) => {
+    if (marqueeStart.current) {
+      const [x, y] = pct(ev)
+      const [sx, sy] = marqueeStart.current
+      setMarquee({ x1: Math.min(sx, x), y1: Math.min(sy, y), x2: Math.max(sx, x), y2: Math.max(sy, y) })
+      return
+    }
     if (!drawing.current) return
     const [x, y] = pct(ev)
     const d = drawing.current
@@ -75,6 +94,27 @@ export default function RevisionLayer({ app, projectId, pageId, pageLabel }: {
     setLive([...d.pts])
   }
   const up = () => {
+    if (marqueeStart.current && marquee) {
+      // seleccionar todo lo que caiga dentro del recuadro
+      marqueeStart.current = null
+      const r = marquee
+      setMarquee(null)
+      const dentro = (x: number, y: number) => x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2
+      const ids: string[] = []
+      for (const m of marks) {
+        if (m.kind === 'stroke') {
+          if ((m.pts || []).some((p) => dentro(p[0], p[1]))) ids.push(m.id)
+        } else {
+          // post-it: seleccionado si su rectángulo se solapa con el recuadro
+          const px = m.x || 0, py = m.y || 0
+          if (px < r.x2 && px + PW > r.x1 && py < r.y2 && py + PH > r.y1) ids.push(m.id)
+        }
+      }
+      setRev({ multi: ids })
+      return
+    }
+    marqueeStart.current = null
+    setMarquee(null)
     const d = drawing.current
     drawing.current = null
     setLive(null)
@@ -120,6 +160,7 @@ export default function RevisionLayer({ app, projectId, pageId, pageLabel }: {
 
   const cursor =
     st.tool === 'postit' ? 'copy' : st.tool === 'erase' ? 'not-allowed' : st.tool ? 'crosshair' : 'default'
+  const enMulti = (id: string) => st.multi.includes(id)
 
   return (
     <div
@@ -134,15 +175,29 @@ export default function RevisionLayer({ app, projectId, pageId, pageLabel }: {
     >
       {/* trazos */}
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}>
+        {/* halo rosa bajo los trazos seleccionados por recuadro */}
+        {marks.filter((m) => m.kind === 'stroke' && enMulti(m.id)).map((m) => {
+          const pts = m.pts || []
+          if (pts.length < 2) return null
+          const d = 'M ' + pts.map((p) => p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join(' L ')
+          return <path key={'halo' + m.id} d={d} fill="none" stroke="#D6197E" strokeWidth={m.tool === 'hi' ? 20 : 8} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.3} />
+        })}
         <g style={{ pointerEvents: st.tool === 'erase' ? 'auto' : 'none' }}>
           {marks.filter((m) => m.kind === 'stroke').map((m) => strokeEl(m))}
           {live && drawing.current && strokeEl({ tool: drawing.current.tool, pts: live }, true)}
         </g>
+        {/* recuadro de selección en curso */}
+        {marquee && (
+          <rect
+            x={marquee.x1} y={marquee.y1} width={marquee.x2 - marquee.x1} height={marquee.y2 - marquee.y1}
+            fill="rgba(214,25,126,0.08)" stroke="#D6197E" strokeWidth={1.5} strokeDasharray="5 4" vectorEffect="non-scaling-stroke"
+          />
+        )}
       </svg>
 
       {/* post-its */}
       {marks.filter((m) => m.kind === 'postit').map((m, i) => (
-        <Postit key={m.id} m={m} idx={i} miembros={miembros} pageLabel={pageLabel} erase={st.tool === 'erase'} sel={st.sel === m.id} />
+        <Postit key={m.id} m={m} idx={i} miembros={miembros} pageLabel={pageLabel} erase={st.tool === 'erase'} sel={st.sel === m.id || enMulti(m.id)} />
       ))}
     </div>
   )
