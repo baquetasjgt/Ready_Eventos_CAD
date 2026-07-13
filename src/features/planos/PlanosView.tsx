@@ -823,7 +823,7 @@ function PlanosPanel({ p }: any) {
         }
         const sel = p.selSheet === sh.id
         return (
-          <div key={sh.id} onClick={(e) => { const t = (e.target as any).tagName; if (['INPUT', 'BUTTON', 'SELECT', 'SUMMARY', 'TEXTAREA'].includes(t)) return; p.selectSheet(sh.id) }} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, border: '1.5px solid ' + (sel ? '#D6197E' : border), borderRadius: 10, background: sel ? '#FDF4F9' : '#fff', cursor: 'pointer' }}>
+          <div key={sh.id} data-sheet-card={sh.id} onClick={(e) => { const t = (e.target as any).tagName; if (['INPUT', 'BUTTON', 'SELECT', 'SUMMARY', 'TEXTAREA'].includes(t)) return; p.selectSheet(sh.id, { page: true }) }} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, border: '1.5px solid ' + (sel ? '#D6197E' : border), borderRadius: 10, background: sel ? '#FDF4F9' : '#fff', cursor: 'pointer' }}>
             <div style={{ display: 'flex', gap: 8 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 'none', justifyContent: 'center' }}>
                 <button onClick={() => p.moveSheet(sh.id, -1)} style={arrowBtn}>▲</button>

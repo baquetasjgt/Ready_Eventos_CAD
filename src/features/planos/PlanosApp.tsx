@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { KEYS, read, write, idbGet, idbSet, idbDel } from '../../lib/storage'
 import { bajarTexto, borrarRuta, subirTexto } from '../../lib/files'
+import { scrollAEl } from '../../lib/scroll'
 import { complete, hasApiKey } from '../../lib/claude'
 import * as lib from './cad-lib'
 import type { Model } from './cad-lib'
@@ -1667,10 +1668,17 @@ export default function PlanosApp() {
       setTimeout(() => setShDelPend((v) => (v === id ? null : v)), 3000)
     }
   }
-  const selectSheet = (shId: string, opts?: { goDoc?: boolean }) => {
+  const selectSheet = (shId: string, opts?: { goDoc?: boolean; page?: boolean }) => {
     setSelSheet(shId)
     setTab('planos')
     if (opts?.goDoc) setVista('doc')
+    // la tarjeta de la barra lateral acompaña siempre a la selección
+    scrollAEl(`[data-sheet-card="${CSS.escape(shId)}"]`, 'nearest', 10)
+    // …y al pulsar la tarjeta (o venir de la cuadrícula), el lienzo va a la lámina
+    if (opts?.page || opts?.goDoc) {
+      setVista('doc')
+      scrollAEl(`[data-sheet-id="${CSS.escape(shId)}"]`, 'center', 15)
+    }
   }
 
   // ==== PDF export ====

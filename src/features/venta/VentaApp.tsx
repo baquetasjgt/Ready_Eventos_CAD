@@ -14,6 +14,7 @@ import RevisionLayer from '../revision/RevisionLayer'
 import RevisionBar from '../revision/RevisionBar'
 import { bajarDataUrl, subirDataUrl } from '../../lib/files'
 import { supabase, supabaseReady } from '../../lib/supabase'
+import { scrollAEl } from '../../lib/scroll'
 import VersionesModal from '../versiones/VersionesModal'
 import { pdfText } from '../../lib/pdf'
 import * as XL from './xlsx'
@@ -75,6 +76,7 @@ interface VState {
   vista?: 'doc' | 'grid'
   gridOver?: string | null
   imgDelPend?: string | null
+  slHl?: string | null
   pdfExporting?: string
   modalVers?: boolean
   modalShare?: boolean
@@ -218,6 +220,7 @@ export default class VentaApp extends Component<Props, VState> {
   _undoSig = ''
   _undoAt = 0
   _idp: any = null
+  _hlT: any = null
   _gridDrag: string | null = null
   _imgAr: Record<string, number> = {}
 
@@ -353,6 +356,7 @@ export default class VentaApp extends Component<Props, VState> {
     clearTimeout(this._ntT)
     clearTimeout(this._sdp)
     clearTimeout(this._idp)
+    clearTimeout(this._hlT)
     try { this._rec && this._rec.stop() } catch { /* mic ya parado */ }
     // Volcar la escritura pendiente (debounce de 500 ms): sin esto, editar y
     // salir a otra ruta perdía los últimos cambios.
@@ -1733,6 +1737,18 @@ export default class VentaApp extends Component<Props, VState> {
     } catch { /* ignore */ }
   }
 
+  // Navegación tarjeta lateral <-> lámina del lienzo
+  gotoLamina = (id: string) => {
+    this.setState({ vista: 'doc' }, () => scrollAEl(`[data-rev-page="${CSS.escape(id)}"]`, 'center', 15))
+  }
+  gotoCard = (id: string) => {
+    if (this.state.tab !== 'laminas') this.setState({ tab: 'laminas' })
+    clearTimeout(this._hlT)
+    this.setState({ slHl: id })
+    this._hlT = setTimeout(() => this.setState({ slHl: null }), 1600)
+    scrollAEl(`[data-slide-card="${CSS.escape(id)}"]`, 'nearest', 10)
+  }
+
   moveSlide(id: string, dir: number) {
     const arr = [...this.state.slides]
     const i = arr.findIndex((x) => x.id === id)
@@ -1923,6 +1939,9 @@ export default class VentaApp extends Component<Props, VState> {
       onLibSave: () => this.libAdd(sl),
       onDup: () => this.dupSlide(sl.id),
       onCtx: (e: any) => this.openCtx(sl.id, e),
+      slId: sl.id,
+      hl: s.slHl === sl.id,
+      onGoto: () => this.gotoLamina(sl.id),
       onDelete: () => {
         if (this.state.slDelPend === sl.id) { clearTimeout(this._sdp); this.setState({ slDelPend: null }); this.up({ slides: this.state.slides.filter((x) => x.id !== sl.id) }); this.toast('Lámina eliminada.', true) }
         else { this.setState({ slDelPend: sl.id }); clearTimeout(this._sdp); this._sdp = setTimeout(() => this.setState({ slDelPend: null }), 3000) }
@@ -2529,7 +2548,7 @@ export default class VentaApp extends Component<Props, VState> {
     const spark11 = <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ flex: 'none' }}><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z" /></svg>
     const smallBtn: React.CSSProperties = { border: '1px solid #DCD9D2', background: '#fff', borderRadius: 7, width: 30, height: 30, fontSize: 12, cursor: 'pointer', color: '#6E6B66' }
     return (
-      <div key={sr.n} draggable onContextMenu={sr.onCtx} onDragStart={sr.onDragStart} onDragOver={sr.onDragOver} onDrop={sr.onDrop} onDragEnd={sr.onDragEnd} style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 12, border: '1px solid #E0DED8', borderTop: sr.dropLine, borderRadius: 10, background: '#fff' }}>
+      <div key={sr.n} data-slide-card={sr.slId} draggable onContextMenu={sr.onCtx} onDragStart={sr.onDragStart} onDragOver={sr.onDragOver} onDrop={sr.onDrop} onDragEnd={sr.onDragEnd} onClick={(e) => { const t = (e.target as any).tagName; if (['INPUT', 'BUTTON', 'SELECT', 'TEXTAREA'].includes(t) || (e.target as any).isContentEditable) return; sr.onGoto() }} title="Clic: ir a la lámina en el lienzo" style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 12, border: '1.5px solid ' + (sr.hl ? '#D6197E' : '#E0DED8'), borderTop: sr.dropLine, borderRadius: 10, background: sr.hl ? '#FDF4F9' : '#fff', cursor: 'pointer', transition: 'border-color 0.2s ease, background 0.2s ease' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span title="Arrastra para reordenar" style={{ cursor: 'grab', color: '#B4B0A8', fontSize: 12, flex: 'none', userSelect: 'none' }}>⠿</span>
           <span style={{ fontFamily: MONO, fontSize: 10, color: '#8A867F', flex: 'none' }}>{sr.n}</span>
@@ -2985,7 +3004,7 @@ export default class VentaApp extends Component<Props, VState> {
       <div className="venta-ph" onDragOver={im.over} onDragLeave={im.leave} onDrop={im.drop} title="Suelta aquí una imagen" style={{ position: 'absolute', inset: 0, outline: im.hlOl, outlineOffset: '-2mm', animation: im.hlAnim, background: dark ? 'repeating-linear-gradient(45deg,#2A2930 0 10px,#232229 10px 20px)' : 'repeating-linear-gradient(45deg,#F2F0EC 0 10px,#E9E6E0 10px 20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: '9pt', color: '#8A867F' }}>{label}</div>
     )
     return (
-      <div key={idx} className="venta-page" data-page="1" data-rev-page={sl.slId} data-screen-label={sl.label} onContextMenu={sl.onCtx} style={{ width: '297mm', height: '210mm', flex: 'none', background: sl.pageBg, boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: v.grid ? 0 : 36, position: 'relative', overflow: 'hidden' }}>
+      <div key={idx} className="venta-page" data-page="1" data-rev-page={sl.slId} data-screen-label={sl.label} onContextMenu={sl.onCtx} onClick={() => this.gotoCard(sl.slId)} style={{ width: '297mm', height: '210mm', flex: 'none', background: sl.pageBg, boxShadow: '0 24px 60px rgba(23,22,26,0.16)', marginBottom: v.grid ? 0 : 36, position: 'relative', overflow: 'hidden' }}>
         {sl.dSvg}
         <RevisionLayer app="venta" projectId={this.props.projectId} pageId={sl.slId} pageLabel={sl.label} />
         {v.grid && (
