@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FISIOEXPO/26 — Salón Profesional de Fisioterapia | Demo Chatbot IA</title>
+<!--
+  ============================================================
+  DEMO no oficial — Réplica de fisioexpo.es para demostración
+  de chatbot IA a cliente. Un solo archivo, sin dependencias.
+
+  Paleta ajustable en :root (variables CSS) para calcar la
+  identidad exacta cuando el cliente facilite su manual de marca.
+
+  El chatbot funciona en "modo demo" con base de conocimiento
+  local (sin API). Para conectar una IA real, ver CHATBOT_CONFIG
+  al inicio del <script> del chatbot.
+  ============================================================
+-->
+<style>
+  :root{
+    --navy:#0b1626;
+    --navy-2:#101f36;
+    --teal:#00c9a7;
+    --teal-dark:#00a98c;
+    --cyan:#20d9e0;
+    --lime:#c8f24b;
+    --white:#ffffff;
+    --grey:#8fa1b8;
+    --grey-light:#eef3f8;
+    --radius:14px;
+    --shadow:0 12px 40px rgba(4,12,26,.25);
+    --font:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--font);color:var(--navy);background:var(--white);line-height:1.6}
+  img{max-width:100%}
+  a{text-decoration:none;color:inherit}
+  h1,h2,h3{line-height:1.15;font-weight:800;letter-spacing:-.02em}
+  .container{max-width:1180px;margin:0 auto;padding:0 24px}
+  .btn{display:inline-block;padding:14px 30px;border-radius:50px;font-weight:700;font-size:15px;transition:.25s;cursor:pointer;border:none}
+  .btn-primary{background:var(--teal);color:var(--navy)}
+  .btn-primary:hover{background:var(--lime);transform:translateY(-2px)}
+  .btn-outline{border:2px solid var(--white);color:var(--white)}
+  .btn-outline:hover{background:var(--white);color:var(--navy)}
+  .tag{display:inline-block;background:rgba(0,201,167,.12);color:var(--teal-dark);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;padding:6px 16px;border-radius:30px;margin-bottom:16px}
+
+  /* ── Topbar ── */
+  .topbar{background:var(--navy);color:var(--grey);font-size:13px;padding:8px 0}
+  .topbar .container{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .topbar b{color:var(--teal)}
+
+  /* ── Header ── */
+  header{position:sticky;top:0;z-index:900;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);box-shadow:0 1px 0 rgba(11,22,38,.08)}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:74px}
+  .logo{font-size:26px;font-weight:900;letter-spacing:-.03em;color:var(--navy)}
+  .logo span{color:var(--teal)}
+  .menu{display:flex;gap:26px;list-style:none;font-size:14.5px;font-weight:600}
+  .menu a{color:var(--navy);opacity:.85;transition:.2s}
+  .menu a:hover{color:var(--teal-dark);opacity:1}
+  .nav .btn{padding:11px 24px;font-size:14px}
+  .burger{display:none;font-size:26px;background:none;border:none;cursor:pointer}
+  @media(max-width:960px){
+    .menu,.nav .btn-primary{display:none}
+    .burger{display:block}
+  }
+
+  /* ── Hero ── */
+  .hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 55%,#0e2b3d 100%);color:var(--white);padding:96px 0 80px;position:relative;overflow:hidden}
+  .hero::before{content:"";position:absolute;right:-180px;top:-180px;width:560px;height:560px;border-radius:50%;background:radial-gradient(circle,rgba(0,201,167,.25),transparent 65%)}
+  .hero::after{content:"";position:absolute;left:-140px;bottom:-220px;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,rgba(32,217,224,.16),transparent 65%)}
+  .hero .container{position:relative;z-index:2}
+  .hero .edition{color:var(--lime);font-weight:800;letter-spacing:.25em;font-size:14px;text-transform:uppercase;margin-bottom:18px}
+  .hero h1{font-size:clamp(38px,6vw,72px);margin-bottom:8px}
+  .hero h1 span{color:var(--teal)}
+  .hero .sub{font-size:clamp(18px,2.4vw,26px);color:#cfe0ee;font-weight:600;margin-bottom:26px}
+  .hero .meta{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:36px;font-weight:600;font-size:16px}
+  .hero .meta div{display:flex;align-items:center;gap:10px}
+  .hero .meta svg{flex:none}
+  .hero .ctas{display:flex;gap:16px;flex-wrap:wrap}
+
+  /* countdown */
+  .count{display:flex;gap:14px;margin-top:44px;flex-wrap:wrap}
+  .count .box{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:var(--radius);padding:14px 20px;min-width:86px;text-align:center}
+  .count .n{font-size:30px;font-weight:900;color:var(--teal)}
+  .count .l{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--grey)}
+
+  /* ── Stats ── */
+  .stats{background:var(--teal);padding:34px 0}
+  .stats .container{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;text-align:center}
+  .stats .n{font-size:34px;font-weight:900;color:var(--navy)}
+  .stats .l{font-weight:600;color:#04352c;font-size:14px}
+  @media(max-width:760px){.stats .container{grid-template-columns:repeat(2,1fr)}}
+
+  /* ── Secciones ── */
+  section{padding:88px 0}
+  .sec-head{max-width:720px;margin-bottom:52px}
+  .sec-head h2{font-size:clamp(28px,3.6vw,42px);margin-bottom:14px}
+  .sec-head p{color:#51637a;font-size:17px}
+  .center{text-align:center;margin-left:auto;margin-right:auto}
+
+  .about{background:var(--grey-light)}
+  .about .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:56px;align-items:center}
+  .about ul{list-style:none;margin-top:22px}
+  .about li{padding-left:34px;position:relative;margin-bottom:14px;color:#3c4f66;font-size:16px}
+  .about li::before{content:"✓";position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:var(--teal);color:var(--navy);font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .about .visual{background:linear-gradient(160deg,var(--navy),#123049);border-radius:24px;padding:40px;color:var(--white);box-shadow:var(--shadow)}
+  .about .visual .big{font-size:64px;font-weight:900;color:var(--teal);letter-spacing:-.03em}
+  .about .visual p{color:var(--grey);margin-top:8px}
+  .about .visual hr{border:none;border-top:1px solid rgba(255,255,255,.12);margin:24px 0}
+  @media(max-width:900px){.about .grid{grid-template-columns:1fr}}
+
+  /* actividades */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+  .card{background:var(--white);border:1px solid #e3eaf2;border-radius:20px;padding:34px 30px;transition:.28s;position:relative;overflow:hidden}
+  .card:hover{transform:translateY(-6px);box-shadow:var(--shadow);border-color:var(--teal)}
+  .card .icon{width:56px;height:56px;border-radius:16px;background:rgba(0,201,167,.13);display:flex;align-items:center;justify-content:center;margin-bottom:22px;font-size:26px}
+  .card h3{font-size:20px;margin-bottom:10px}
+  .card p{color:#51637a;font-size:15px}
+  @media(max-width:900px){.cards{grid-template-columns:1fr 1fr}}
+  @media(max-width:640px){.cards{grid-template-columns:1fr}}
+
+  /* programa */
+  .programa{background:var(--navy);color:var(--white)}
+  .programa .sec-head p{color:var(--grey)}
+  .days{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+  .day{background:var(--navy-2);border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:32px}
+  .day .d{color:var(--lime);font-weight:800;font-size:14px;letter-spacing:.15em;text-transform:uppercase}
+  .day h3{font-size:24px;margin:8px 0 18px}
+  .day ul{list-style:none}
+  .day li{padding:11px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:14.5px;color:#c6d5e4;display:flex;gap:12px}
+  .day li:last-child{border:none}
+  .day li b{color:var(--teal);font-weight:700;min-width:52px}
+  @media(max-width:900px){.days{grid-template-columns:1fr}}
+
+  /* entradas */
+  .tickets .cards{grid-template-columns:repeat(2,1fr);max-width:820px;margin:0 auto}
+  .price-card{border:2px solid #e3eaf2;border-radius:24px;padding:40px;text-align:center;transition:.28s;background:var(--white)}
+  .price-card.featured{border-color:var(--teal);box-shadow:var(--shadow);position:relative}
+  .price-card.featured::before{content:"MÁS POPULAR";position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--teal);color:var(--navy);font-size:11px;font-weight:800;letter-spacing:.12em;padding:6px 18px;border-radius:30px}
+  .price-card h3{font-size:22px;margin-bottom:6px}
+  .price-card .price{font-size:52px;font-weight:900;color:var(--navy);margin:14px 0}
+  .price-card .price small{font-size:20px;color:var(--teal-dark)}
+  .price-card ul{list-style:none;margin:22px 0 30px;text-align:left}
+  .price-card li{padding:8px 0 8px 30px;position:relative;color:#3c4f66;font-size:15px;border-bottom:1px dashed #e3eaf2}
+  .price-card li::before{content:"✓";position:absolute;left:2px;color:var(--teal-dark);font-weight:900}
+  @media(max-width:760px){.tickets .cards{grid-template-columns:1fr}}
+
+  /* expositores CTA */
+  .expo-cta{background:linear-gradient(120deg,var(--teal),var(--cyan));padding:72px 0}
+  .expo-cta .inner{display:flex;justify-content:space-between;align-items:center;gap:32px;flex-wrap:wrap}
+  .expo-cta h2{font-size:clamp(26px,3.4vw,38px);color:var(--navy)}
+  .expo-cta p{color:#083a31;font-weight:600;margin-top:8px}
+  .expo-cta .btn{background:var(--navy);color:var(--white)}
+  .expo-cta .btn:hover{background:#000;transform:translateY(-2px)}
+
+  /* footer */
+  footer{background:var(--navy);color:var(--grey);padding:64px 0 0}
+  .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr;gap:44px;padding-bottom:48px}
+  footer h4{color:var(--white);font-size:15px;margin-bottom:18px;letter-spacing:.06em;text-transform:uppercase}
+  footer ul{list-style:none}
+  footer li{margin-bottom:10px;font-size:14.5px}
+  footer a:hover{color:var(--teal)}
+  .foot-logo{font-size:24px;font-weight:900;color:var(--white)}
+  .foot-logo span{color:var(--teal)}
+  .social{display:flex;gap:12px;margin-top:20px}
+  .social a{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;transition:.2s;font-size:15px}
+  .social a:hover{background:var(--teal);color:var(--navy)}
+  .foot-bottom{border-top:1px solid rgba(255,255,255,.09);padding:20px 0;font-size:13px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  @media(max-width:900px){.foot-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.foot-grid{grid-template-columns:1fr}}
+
+  /* ═══════════ CHATBOT ═══════════ */
+  #fx-chat-launcher{position:fixed;right:24px;bottom:24px;z-index:9999;width:64px;height:64px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,var(--teal),var(--cyan));box-shadow:0 10px 30px rgba(0,201,167,.45);display:flex;align-items:center;justify-content:center;transition:.3s}
+  #fx-chat-launcher:hover{transform:scale(1.08)}
+  #fx-chat-launcher svg{width:30px;height:30px}
+  #fx-chat-launcher .pulse{position:absolute;inset:0;border-radius:50%;border:2px solid var(--teal);animation:fxpulse 2s infinite}
+  @keyframes fxpulse{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.55);opacity:0}}
+  #fx-chat-badge{position:absolute;top:-4px;right:-2px;background:#ff4d5e;color:#fff;font-size:11px;font-weight:800;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font)}
+
+  #fx-chat{position:fixed;right:24px;bottom:104px;z-index:9999;width:380px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 140px);background:var(--white);border-radius:22px;box-shadow:0 24px 70px rgba(4,12,26,.4);display:flex;flex-direction:column;overflow:hidden;opacity:0;transform:translateY(24px) scale(.96);pointer-events:none;transition:.32s cubic-bezier(.2,.9,.3,1.2)}
+  #fx-chat.open{opacity:1;transform:none;pointer-events:auto}
+
+  .fx-head{background:linear-gradient(135deg,var(--navy),#123049);color:var(--white);padding:18px 20px;display:flex;align-items:center;gap:14px}
+  .fx-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--cyan));display:flex;align-items:center;justify-content:center;flex:none;position:relative}
+  .fx-avatar::after{content:"";position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;background:#3ddc84;border:2px solid var(--navy)}
+  .fx-head .t{font-weight:800;font-size:16px}
+  .fx-head .s{font-size:12px;color:var(--teal);display:flex;align-items:center;gap:6px}
+  .fx-head .close{margin-left:auto;background:rgba(255,255,255,.1);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;transition:.2s}
+  .fx-head .close:hover{background:rgba(255,255,255,.22)}
+
+  .fx-body{flex:1;overflow-y:auto;padding:18px 16px;background:#f4f8fb;display:flex;flex-direction:column;gap:12px}
+  .fx-msg{max-width:82%;padding:12px 15px;border-radius:16px;font-size:14.3px;line-height:1.5;animation:fxin .3s ease}
+  @keyframes fxin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .fx-msg.bot{background:var(--white);border:1px solid #e3eaf2;border-bottom-left-radius:5px;align-self:flex-start;color:#22334a;box-shadow:0 2px 8px rgba(11,22,38,.05)}
+  .fx-msg.user{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#04352c;font-weight:600;border-bottom-right-radius:5px;align-self:flex-end}
+  .fx-msg.bot b{color:var(--navy)}
+  .fx-msg.bot a{color:var(--teal-dark);font-weight:700;text-decoration:underline}
+
+  .fx-typing{align-self:flex-start;background:var(--white);border:1px solid #e3eaf2;border-radius:16px;border-bottom-left-radius:5px;padding:14px 18px;display:flex;gap:5px}
+  .fx-typing i{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:fxdot 1.2s infinite}
+  .fx-typing i:nth-child(2){animation-delay:.15s}
+  .fx-typing i:nth-child(3){animation-delay:.3s}
+  @keyframes fxdot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-6px);opacity:1}}
+
+  .fx-chips{display:flex;flex-wrap:wrap;gap:8px;align-self:flex-start;animation:fxin .3s ease}
+  .fx-chip{background:var(--white);border:1.5px solid var(--teal);color:var(--teal-dark);font-size:12.8px;font-weight:700;padding:7px 14px;border-radius:30px;cursor:pointer;transition:.2s;font-family:var(--font)}
+  .fx-chip:hover{background:var(--teal);color:var(--navy)}
+
+  .fx-foot{padding:12px 14px;background:var(--white);border-top:1px solid #e8eef5;display:flex;gap:10px;align-items:center}
+  .fx-foot input{flex:1;border:1.5px solid #dbe5ef;border-radius:30px;padding:12px 18px;font-size:14px;outline:none;font-family:var(--font);transition:.2s}
+  .fx-foot input:focus{border-color:var(--teal)}
+  .fx-send{width:44px;height:44px;border-radius:50%;border:none;background:var(--teal);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;flex:none}
+  .fx-send:hover{background:var(--lime)}
+  .fx-powered{text-align:center;font-size:10.5px;color:#9db0c4;padding:0 0 8px;background:var(--white)}
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="container">
+    <div>📅 <b>25 · 26 · 27 septiembre 2026</b> &nbsp;|&nbsp; 📍 IFEMA MADRID — Pabellón 8</div>
+    <div>✉️ info@fisioexpo.es</div>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="container nav">
+    <a class="logo" href="#inicio">FISIO<span>EXPO</span><span style="color:var(--navy)">/</span><span>26</span></a>
+    <ul class="menu">
+      <li><a href="#evento">El evento</a></li>
+      <li><a href="#actividades">Actividades</a></li>
+      <li><a href="#programa">Programa</a></li>
+      <li><a href="#entradas">Entradas</a></li>
+      <li><a href="#expositores">Expositores</a></li>
+      <li><a href="#contacto">Contacto</a></li>
+    </ul>
+    <a class="btn btn-primary" href="#entradas">Consigue tu entrada</a>
+    <button class="burger" aria-label="Menú">☰</button>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero" id="inicio">
+  <div class="container">
+    <div class="edition">Salón Profesional de Fisioterapia · España &amp; Portugal</div>
+    <h1>FISIO<span>EXPO</span>/26</h1>
+    <p class="sub">El mayor evento de fisioterapia de Europa</p>
+    <div class="meta">
+      <div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00c9a7" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> 25, 26 y 27 de septiembre de 2026</div>
+      <div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00c9a7" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg> IFEMA MADRID · Pabellón 8</div>
+    </div>
+    <div class="ctas">
+      <a class="btn btn-primary" href="#entradas">Consigue tu entrada</a>
+      <a class="btn btn-outline" href="#expositores">Quiero ser expositor</a>
+    </div>
+    <div class="count" id="countdown">
+      <div class="box"><div class="n" id="cd-d">—</div><div class="l">Días</div></div>
+      <div class="box"><div class="n" id="cd-h">—</div><div class="l">Horas</div></div>
+      <div class="box"><div class="n" id="cd-m">—</div><div class="l">Minutos</div></div>
+      <div class="box"><div class="n" id="cd-s">—</div><div class="l">Segundos</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="container">
+    <div><div class="n">+170</div><div class="l">Expositores</div></div>
+    <div><div class="n">+8.000</div><div class="l">Asistentes</div></div>
+    <div><div class="n">10.000 m²</div><div class="l">De exposición</div></div>
+    <div><div class="n">+150</div><div class="l">Talleres y actividades</div></div>
+  </div>
+</div>
+
+<!-- El evento -->
+<section class="about" id="evento">
+  <div class="container grid">
+    <div>
+      <span class="tag">El evento</span>
+      <h2 style="font-size:clamp(28px,3.6vw,42px);margin-bottom:16px">El punto de encuentro de la fisioterapia</h2>
+      <p style="color:#51637a;font-size:17px">FISIOEXPO es el evento líder del sector de la fisioterapia en Europa: el lugar donde empresas, profesionales y referentes se reúnen para descubrir las últimas innovaciones, compartir conocimiento y generar nuevas oportunidades.</p>
+      <ul>
+        <li>Exposición comercial con las marcas más punteras del sector</li>
+        <li>Formación avanzada: MasterClasses, talleres y demostraciones en vivo</li>
+        <li>Casos clínicos con pacientes reales y fisioterapeutas expertos</li>
+        <li>Networking con visionarios, especialistas y decisores del sector</li>
+      </ul>
+      <a class="btn btn-primary" style="margin-top:28px" href="#actividades">Descubre las actividades</a>
+    </div>
+    <div class="visual">
+      <div class="big">3 días</div>
+      <p>de exposición, tecnología, formación avanzada y networking en un formato único.</p>
+      <hr>
+      <div style="display:flex;gap:28px">
+        <div><div style="font-size:28px;font-weight:900;color:var(--cyan)">/26</div><p style="font-size:13px">Nueva edición</p></div>
+        <div><div style="font-size:28px;font-weight:900;color:var(--cyan)">ES·PT</div><p style="font-size:13px">España y Portugal</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Actividades -->
+<section id="actividades">
+  <div class="container">
+    <div class="sec-head center" style="text-align:center">
+      <span class="tag">Actividades</span>
+      <h2>Vive la fisioterapia más avanzada</h2>
+      <p>Un programa formativo de alto nivel con protocolos concretos y herramientas prácticas directamente aplicables a tu consulta.</p>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="icon">🎓</div><h3>MasterClasses</h3><p>Formación intensiva que combina teoría y aplicación práctica con protocolos avanzados, técnicas específicas y casos reales.</p></div>
+      <div class="card"><div class="icon">🩺</div><h3>Casos Clínicos</h3><p>Asiste en directo a casos clínicos con pacientes reales y fisioterapeutas expertos en la clínica situada en pleno corazón del evento.</p></div>
+      <div class="card"><div class="icon">🎤</div><h3>FisioTalks</h3><p>Charlas, ponencias y mesas redondas a cargo de expertos de referencia. Un espacio dinámico para inspirarte y ampliar horizontes.</p></div>
+      <div class="card"><div class="icon">🛠️</div><h3>Talleres prácticos</h3><p>Más de 150 talleres y demostraciones en vivo para probar de primera mano las técnicas y equipos más innovadores.</p></div>
+      <div class="card"><div class="icon">📈</div><h3>Espacio Gestión</h3><p>Liderazgo, clínica, pacientes y desarrollo profesional: todo lo que necesitas para hacer crecer tu negocio.</p></div>
+      <div class="card"><div class="icon">🤝</div><h3>Networking</h3><p>Conecta cara a cara con visionarios globales, especialistas, decisores y agentes clave del sector.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- Programa -->
+<section class="programa" id="programa">
+  <div class="container">
+    <div class="sec-head">
+      <span class="tag" style="background:rgba(200,242,75,.14);color:var(--lime)">Programa</span>
+      <h2>Tres días a tope de contenido</h2>
+      <p>Avance del programa. Consulta la agenda completa y reserva plaza en las actividades con aforo limitado.</p>
+    </div>
+    <div class="days">
+      <div class="day">
+        <div class="d">Viernes</div>
+        <h3>25 septiembre</h3>
+        <ul>
+          <li><b>10:00</b> Apertura de puertas y exposición</li>
+          <li><b>11:00</b> MasterClass inaugural</li>
+          <li><b>13:00</b> FisioTalks: innovación y tecnología</li>
+          <li><b>16:00</b> Casos clínicos en directo</li>
+          <li><b>18:30</b> Networking de bienvenida</li>
+        </ul>
+      </div>
+      <div class="day">
+        <div class="d">Sábado</div>
+        <h3>26 septiembre</h3>
+        <ul>
+          <li><b>10:00</b> Talleres prácticos por marcas</li>
+          <li><b>12:00</b> MasterClasses simultáneas</li>
+          <li><b>15:00</b> Espacio Gestión: liderazgo clínico</li>
+          <li><b>17:00</b> Casos clínicos con paciente real</li>
+          <li><b>19:00</b> Mesa redonda de referentes</li>
+        </ul>
+      </div>
+      <div class="day">
+        <div class="d">Domingo</div>
+        <h3>27 septiembre</h3>
+        <ul>
+          <li><b>10:00</b> Demostraciones en vivo</li>
+          <li><b>11:30</b> FisioTalks: futuro de la profesión</li>
+          <li><b>13:30</b> MasterClass de clausura</li>
+          <li><b>15:00</b> Sorteos y actividades expositores</li>
+          <li><b>17:00</b> Cierre de la edición /26</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Entradas -->
+<section class="tickets" id="entradas">
+  <div class="container">
+    <div class="sec-head center" style="text-align:center">
+      <span class="tag">Entradas</span>
+      <h2>Consigue tu acreditación</h2>
+      <p>Elige la acreditación que mejor se adapta a ti. Los colegiados de colegios profesionales con convenio disfrutan de descuentos especiales.</p>
+    </div>
+    <div class="cards">
+      <div class="price-card">
+        <h3>Acreditación Essential</h3>
+        <p style="color:#51637a;font-size:14px">Acceso a la zona expositiva</p>
+        <div class="price">9<small>€</small></div>
+        <ul>
+          <li>Acceso 3 días a la exposición comercial</li>
+          <li>Demostraciones en vivo de expositores</li>
+          <li>Acceso al espacio FisioTalks</li>
+          <li>Zona de networking</li>
+        </ul>
+        <a class="btn btn-primary" href="#" onclick="fxOpenChat('Quiero comprar la entrada Essential');return false">Comprar Essential</a>
+      </div>
+      <div class="price-card featured">
+        <h3>Acreditación Advanced</h3>
+        <p style="color:#51637a;font-size:14px">La experiencia completa</p>
+        <div class="price">29<small>€</small></div>
+        <ul>
+          <li>Todo lo incluido en Essential</li>
+          <li>Acceso a MasterClasses</li>
+          <li>Casos clínicos con pacientes reales</li>
+          <li>Espacio Gestión y talleres premium</li>
+          <li>Certificado de asistencia</li>
+        </ul>
+        <a class="btn btn-primary" href="#" onclick="fxOpenChat('Quiero comprar la entrada Advanced');return false">Comprar Advanced</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Expositores CTA -->
+<div class="expo-cta" id="expositores">
+  <div class="container inner">
+    <div>
+      <h2>¿Quieres exponer en FISIOEXPO/26?</h2>
+      <p>Únete a las +170 marcas que presentarán sus novedades ante más de 8.000 profesionales.</p>
+    </div>
+    <a class="btn" href="#" onclick="fxOpenChat('Quiero información para ser expositor');return false">Solicitar información</a>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer id="contacto">
+  <div class="container">
+    <div class="foot-grid">
+      <div>
+        <div class="foot-logo">FISIO<span>EXPO</span>/26</div>
+        <p style="margin-top:14px;font-size:14.5px">El mayor evento para profesionales de la fisioterapia de España y Portugal.</p>
+        <div class="social">
+          <a href="#" aria-label="Instagram">IG</a>
+          <a href="#" aria-label="Facebook">FB</a>
+          <a href="#" aria-label="LinkedIn">IN</a>
+          <a href="#" aria-label="YouTube">YT</a>
+        </div>
+      </div>
+      <div>
+        <h4>El evento</h4>
+        <ul>
+          <li><a href="#evento">Qué es FISIOEXPO</a></li>
+          <li><a href="#actividades">Actividades</a></li>
+          <li><a href="#programa">Programa</a></li>
+          <li><a href="#entradas">Entradas</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Participa</h4>
+        <ul>
+          <li><a href="#expositores">Ser expositor</a></li>
+          <li><a href="#">Prensa y medios</a></li>
+          <li><a href="#">Patrocinios</a></li>
+          <li><a href="#">Ediciones anteriores</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Contacto</h4>
+        <ul>
+          <li>📍 IFEMA MADRID — Pabellón 8<br>Av. del Partenón, 5 · 28042 Madrid</li>
+          <li>✉️ info@fisioexpo.es</li>
+          <li>🗓️ 25–27 septiembre 2026</li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <div>© 2026 FISIOEXPO — Réplica de demostración con chatbot IA (no es el sitio oficial).</div>
+      <div>Aviso legal · Privacidad · Cookies</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════════ CHATBOT IA ═══════════ -->
+<button id="fx-chat-launcher" aria-label="Abrir chat">
+  <span class="pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="#0b1626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <span id="fx-chat-badge">1</span>
+</button>
+
+<div id="fx-chat" role="dialog" aria-label="Asistente virtual FISIOEXPO">
+  <div class="fx-head">
+    <div class="fx-avatar">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0b1626" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+    </div>
+    <div>
+      <div class="t">FisioBot</div>
+      <div class="s">● Asistente IA · responde al instante</div>
+    </div>
+    <button class="close" id="fx-close" aria-label="Cerrar chat">✕</button>
+  </div>
+  <div class="fx-body" id="fx-body"></div>
+  <div class="fx-foot">
+    <input id="fx-input" type="text" placeholder="Escribe tu pregunta…" autocomplete="off">
+    <button class="fx-send" id="fx-send" aria-label="Enviar">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0b1626" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+    </button>
+  </div>
+  <div class="fx-powered">⚡ Chatbot IA de demostración — se conecta a tu modelo de IA en producción</div>
+</div>
+
+<script>
+/* ── Countdown ── */
+(function(){
+  const target = new Date('2026-09-25T10:00:00+02:00').getTime();
+  const el = id => document.getElementById(id);
+  function tick(){
+    let diff = Math.max(0, target - Date.now());
+    const d = Math.floor(diff/864e5); diff -= d*864e5;
+    const h = Math.floor(diff/36e5);  diff -= h*36e5;
+    const m = Math.floor(diff/6e4);   diff -= m*6e4;
+    const s = Math.floor(diff/1e3);
+    el('cd-d').textContent = d; el('cd-h').textContent = h;
+    el('cd-m').textContent = m; el('cd-s').textContent = s;
+  }
+  tick(); setInterval(tick, 1000);
+})();
+
+/* ═══════════════ CHATBOT ═══════════════
+   MODO DEMO: responde con una base de conocimiento local.
+   PRODUCCIÓN: poner CHATBOT_CONFIG.apiEndpoint apuntando a tu
+   backend (p. ej. un endpoint que llame a la API de Claude u
+   otro LLM con el contexto del evento) y el widget usará la IA
+   real automáticamente. */
+const CHATBOT_CONFIG = {
+  apiEndpoint: null,          // ej: 'https://tu-backend.com/api/chat'
+  botName: 'FisioBot',
+  typingMinMs: 700,
+  typingMaxMs: 1400,
+};
+
+const KB = [
+  { intent:'fechas', kw:['fecha','cuando','cuándo','día','dias','días','septiembre','celebra'],
+    a:'📅 <b>FISIOEXPO/26</b> se celebra los días <b>25, 26 y 27 de septiembre de 2026</b> en IFEMA MADRID (Pabellón 8). ¡Tres días completos de fisioterapia al máximo nivel! ¿Quieres que te cuente cómo conseguir tu entrada?' },
+  { intent:'ubicacion', kw:['donde','dónde','ubicaci','lugar','ifema','madrid','llegar','direccion','dirección','metro','parking','aparcar','como ir','cómo ir'],
+    a:'📍 El evento tiene lugar en <b>IFEMA MADRID — Pabellón 8</b>, Av. del Partenón 5, 28042 Madrid.<br><br>🚇 <b>Metro:</b> L8, estación Feria de Madrid.<br>🚗 <b>Coche:</b> aparcamientos de IFEMA junto al pabellón.<br>✈️ A 10 min del aeropuerto Madrid-Barajas. ¿Te ayudo con algo más?' },
+  { intent:'entradas', kw:['entrada','ticket','precio','cuesta','cuanto','cuánto','acreditaci','comprar','essential','advanced','tarifa','inscri','registr'],
+    a:'🎟️ Tenemos dos tipos de acreditación:<br><br>• <b>Essential — 9€</b>: acceso 3 días a la zona expositiva, demostraciones y FisioTalks.<br>• <b>Advanced — 29€</b>: todo lo anterior + MasterClasses, casos clínicos, Espacio Gestión y certificado de asistencia.<br><br>💡 Los colegiados de colegios con convenio tienen <b>descuentos especiales</b>. ¿Quieres que te envíe el enlace de compra?' },
+  { intent:'descuento', kw:['descuento','colegiado','colegio','codigo','código','promoci','gratis','oferta'],
+    a:'💚 ¡Sí! Los <b>colegios profesionales de fisioterapeutas con convenio</b> ofrecen códigos de descuento a sus colegiados. Consulta con tu colegio o dime cuál es el tuyo y te indico cómo conseguirlo.' },
+  { intent:'horario', kw:['horario','hora','abre','cierra','apertura','cierre'],
+    a:'🕙 El recinto abre a las <b>10:00</b> todos los días del evento. Las actividades formativas se desarrollan a lo largo de toda la jornada — consulta la sección <a href="#programa">Programa</a> para ver el detalle de cada día.' },
+  { intent:'programa', kw:['programa','agenda','actividad','masterclass','master class','taller','fisiotalk','caso','clinico','clínico','ponente','charla','formaci'],
+    a:'🎓 El programa incluye <b>+150 actividades</b>:<br><br>• <b>MasterClasses</b> con protocolos avanzados<br>• <b>Casos clínicos</b> con pacientes reales en directo<br>• <b>FisioTalks</b>: charlas y mesas redondas<br>• <b>Talleres prácticos</b> y demos en vivo<br>• <b>Espacio Gestión</b> para tu clínica<br><br>Las actividades con aforo limitado requieren reserva previa. ¿Te interesa alguna temática en concreto?' },
+  { intent:'expositor', kw:['expositor','exponer','stand','marca','empresa','patrocin','sponsor','comercial'],
+    a:'🏢 ¡Genial! FISIOEXPO/26 reunirá a <b>+170 expositores</b> en 10.000 m² ante más de 8.000 profesionales.<br><br>Para reservar tu stand o solicitar el dossier comercial, escríbenos a <b>info@fisioexpo.es</b> y el equipo comercial te contactará en menos de 24h. ¿Quieres que tome nota de tus datos para que te llamen?' },
+  { intent:'contacto', kw:['contact','email','correo','telefono','teléfono','hablar','persona','humano','agente'],
+    a:'📬 Puedes escribirnos a <b>info@fisioexpo.es</b> y te responderemos lo antes posible. Si lo prefieres, déjame tu consulta aquí y la haré llegar al equipo. 😊' },
+  { intent:'certificado', kw:['certificado','diploma','asistencia','acredita mi'],
+    a:'📜 La acreditación <b>Advanced (29€)</b> incluye <b>certificado de asistencia</b>, perfecto para tu desarrollo profesional continuo.' },
+  { intent:'saludo', kw:['hola','buenas','buenos dias','buenos días','buenas tardes','hey','que tal','qué tal'],
+    a:'¡Hola! 👋 Soy <b>FisioBot</b>, el asistente virtual de FISIOEXPO/26. Puedo ayudarte con entradas, programa, ubicación, horarios y mucho más. ¿Qué necesitas?' },
+  { intent:'gracias', kw:['gracias','perfecto','genial','vale','ok','estupendo'],
+    a:'¡A ti! 💚 Si necesitas cualquier otra cosa, aquí estaré. ¡Nos vemos en FISIOEXPO/26! 🙌' },
+];
+
+const CHIPS_INICIALES = ['🎟️ Entradas y precios','📅 Fechas y horarios','📍 Cómo llegar','🎓 Programa','🏢 Ser expositor'];
+const FALLBACK = 'Buena pregunta 🤔 Ahora mismo no tengo ese dato en mi base de conocimiento de demo, pero en producción lo respondería consultando la IA con toda la información del evento. Prueba a preguntarme por <b>entradas, fechas, programa, ubicación o expositores</b>, o escribe a <b>info@fisioexpo.es</b>.';
+
+const $ = s => document.querySelector(s);
+const body = $('#fx-body'), input = $('#fx-input');
+let opened = false;
+
+function scrollBottom(){ body.scrollTop = body.scrollHeight; }
+
+function addMsg(html, who){
+  const d = document.createElement('div');
+  d.className = 'fx-msg ' + who;
+  d.innerHTML = html;
+  body.appendChild(d); scrollBottom();
+}
+
+function addChips(labels){
+  const wrap = document.createElement('div');
+  wrap.className = 'fx-chips';
+  labels.forEach(l => {
+    const b = document.createElement('button');
+    b.className = 'fx-chip'; b.textContent = l;
+    b.onclick = () => { wrap.remove(); sendUser(l.replace(/^[^\w¿]+\s*/,'')); };
+    wrap.appendChild(b);
+  });
+  body.appendChild(wrap); scrollBottom();
+}
+
+function showTyping(){
+  const t = document.createElement('div');
+  t.className = 'fx-typing'; t.id = 'fx-typing';
+  t.innerHTML = '<i></i><i></i><i></i>';
+  body.appendChild(t); scrollBottom();
+}
+function hideTyping(){ const t = $('#fx-typing'); if (t) t.remove(); }
+
+function normalize(s){
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+}
+
+function localAnswer(text){
+  const q = normalize(text);
+  let best = null, bestScore = 0;
+  for (const item of KB){
+    let score = 0;
+    for (const kw of item.kw){
+      if (q.includes(normalize(kw))) score += kw.length; // keywords largas pesan más
+    }
+    if (score > bestScore){ bestScore = score; best = item; }
+  }
+  return best ? best.a : FALLBACK;
+}
+
+async function botReply(text){
+  showTyping();
+  let answer;
+  if (CHATBOT_CONFIG.apiEndpoint){
+    try {
+      const r = await fetch(CHATBOT_CONFIG.apiEndpoint, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ message: text })
+      });
+      answer = (await r.json()).reply;
+    } catch { answer = localAnswer(text); }
+  } else {
+    const delay = CHATBOT_CONFIG.typingMinMs + Math.random()*(CHATBOT_CONFIG.typingMaxMs - CHATBOT_CONFIG.typingMinMs);
+    await new Promise(res => setTimeout(res, delay));
+    answer = localAnswer(text);
+  }
+  hideTyping();
+  addMsg(answer, 'bot');
+}
+
+function sendUser(text){
+  text = text.trim();
+  if (!text) return;
+  document.querySelectorAll('.fx-chips').forEach(c => c.remove());
+  addMsg(text.replace(/</g,'&lt;'), 'user');
+  input.value = '';
+  botReply(text);
+}
+
+function openChat(){
+  $('#fx-chat').classList.add('open');
+  $('#fx-chat-badge').style.display = 'none';
+  if (!opened){
+    opened = true;
+    setTimeout(() => {
+      addMsg('¡Hola! 👋 Soy <b>FisioBot</b>, el asistente con IA de FISIOEXPO/26.<br>Puedo resolver tus dudas sobre el evento al momento, las 24 horas. ¿En qué te ayudo?', 'bot');
+      addChips(CHIPS_INICIALES);
+    }, 350);
+  }
+  setTimeout(() => input.focus(), 400);
+}
+function closeChat(){ $('#fx-chat').classList.remove('open'); }
+
+/* API pública para los CTA de la página */
+function fxOpenChat(pregunta){
+  openChat();
+  if (pregunta) setTimeout(() => sendUser(pregunta), opened ? 500 : 1200);
+}
+
+$('#fx-chat-launcher').onclick = () => $('#fx-chat').classList.contains('open') ? closeChat() : openChat();
+$('#fx-close').onclick = closeChat;
+$('#fx-send').onclick = () => sendUser(input.value);
+input.addEventListener('keydown', e => { if (e.key === 'Enter') sendUser(input.value); });
+
+/* Atrae la atención a los 4s si no se ha abierto */
+setTimeout(() => { if (!opened) $('#fx-chat-launcher').style.animation = 'fxpulse 0s'; }, 4000);
+</script>
+</body>
+</html>
