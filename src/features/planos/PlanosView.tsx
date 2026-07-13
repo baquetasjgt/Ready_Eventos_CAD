@@ -797,6 +797,11 @@ function PlanosPanel({ p }: any) {
                 <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
                 <div style={{ fontFamily: MONO, fontSize: 9.5, color: muted }}>{m ? m.n + ' entidades · ' + fmtNum(m.bounds.w) + ' × ' + fmtNum(m.bounds.h) + ' ' + d.unit : '…'}</div>
               </div>
+              <label title="Actualizar este plano con un DXF nuevo del CAD — las láminas conservan escalas, etiquetas y zonas" style={{ border: '1px solid ' + fieldBd, background: '#fff', borderRadius: 6, padding: '5px 8px', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', color: '#17161A', flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
+                Actualizar
+                <input type="file" accept=".dxf" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) p.updateDrawing(d.id, f) }} style={{ display: 'none' }} />
+              </label>
               <button onClick={() => p.detectar(d.id)} title="Buscar marcos de lámina dibujados" style={{ border: '1px solid ' + fieldBd, background: '#fff', borderRadius: 6, padding: '5px 8px', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', color: '#17161A', flex: 'none' }}>Detectar láminas</button>
               <select value={d.unit} onChange={(e) => p.up({ drawings: doc.drawings.map((x: any) => (x.id === d.id ? { ...x, unit: e.target.value } : x)) })} style={{ padding: '6px 8px', border: '1px solid ' + fieldBd, borderRadius: 6, fontSize: 12, background: '#fff' }}>
                 {unitOptions.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}

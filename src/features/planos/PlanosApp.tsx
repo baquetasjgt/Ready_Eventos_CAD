@@ -677,6 +677,49 @@ export default function PlanosApp() {
     toast('Detectadas ' + frames.length + (frames.length === 1 ? ' lámina' : ' láminas') + ' en «' + d.name + '».')
   }
 
+  // Actualizar un dibujo en el sitio: sustituye la geometría por la del nuevo
+  // archivo conservando el mismo id, de modo que todas las láminas (escalas,
+  // etiquetas, zonas, croquis, leyendas) siguen apuntando al plano.
+  const updateDrawing = async (drawingId: string, file: File) => {
+    let buf: ArrayBuffer
+    try { buf = await file.arrayBuffer() } catch { return }
+    const head = new TextDecoder('latin1').decode(buf.slice(0, 24))
+    if (/^AC\d{4}/.test(head)) {
+      toast('«' + file.name + '» es un DWG binario. En AutoCAD: Guardar como «AutoCAD DXF» y sube ese .dxf.')
+      return
+    }
+    if (head.startsWith('AutoCAD Binary DXF')) {
+      toast('«' + file.name + '» es un DXF binario. Guárdalo como DXF ASCII desde AutoCAD.')
+      return
+    }
+    let text = new TextDecoder('utf-8').decode(buf)
+    if (text.includes('�')) text = new TextDecoder('windows-1252').decode(buf)
+    try {
+      const m = lib.parseDXF(text)
+      if (!m.n) {
+        toast('No se han encontrado entidades dibujadas en «' + file.name + '».')
+        return
+      }
+      models.current[drawingId] = m
+      raws.current[drawingId] = text
+      // las cachés de render dependen de la geometría: invalidarlas
+      svgCache.current = {}
+      thumbCache.current = {}
+      framesCache.current = {}
+      delete snapCache.current[drawingId]
+      idbSet(dxfKey(drawingId), { name: file.name, blob: new Blob([text]), text })
+      subirTexto('dxf', projectId + '/' + drawingId, text)
+      up({
+        drawings: doc.drawings.map((d) =>
+          d.id === drawingId ? { ...d, name: file.name, sample: false, pending: false, unit: d.unit || m.unitsGuess } : d,
+        ),
+      })
+      toast('Plano actualizado con «' + file.name + '»: las láminas conservan sus escalas, etiquetas y zonas. Revisa que sigan encuadradas (y «Ajustar escala» si cambió el tamaño).')
+    } catch (err: any) {
+      toast('Error al interpretar «' + file.name + '»: ' + err.message)
+    }
+  }
+
   // Eliminar un dibujo: además del estado, limpiar el modelo, el DXF crudo en
   // memoria y su copia en IndexedDB (antes quedaban huérfanos para siempre).
   const delDrawing = (drawingId: string) => {
@@ -1844,6 +1887,7 @@ export default function PlanosApp() {
       onFile={onFile}
       detectar={detectar}
       delDrawing={delDrawing}
+      updateDrawing={updateDrawing}
       etiqSheet={etiqTarget()}
       versionesPayload={() => {
         const pl = buildPayload(doc)
