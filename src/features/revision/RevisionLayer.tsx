@@ -249,6 +249,7 @@ function Postit({ m, idx, miembros, pageLabel, erase, sel }: {
   return (
     <div
       ref={ref}
+      data-rev-postit="1"
       onPointerDown={(e) => { e.stopPropagation(); if (erase) { delMark(m.id) } else setRev({ sel: m.id }) }}
       style={{
         position: 'absolute', left: (m.x || 0) + '%', top: (m.y || 0) + '%',

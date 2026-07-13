@@ -39,7 +39,20 @@ export default function RevisionBar({ projectId, app }: { projectId: string; app
       }
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    // Clic fuera de un post-it (sin herramienta activa): deseleccionar.
+    // Con herramienta activa no se toca la selección — dibujar con un post-it
+    // seleccionado liga los trazos a él a propósito.
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null
+      if (t?.closest?.('[data-rev-postit],[data-rev-keep]')) return
+      const st = revState()
+      if (!st.tool && (st.sel || st.multi.length)) setRev({ sel: null, multi: [] })
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onDown)
+    }
   }, [])
 
   const st = revState()
@@ -55,7 +68,7 @@ export default function RevisionBar({ projectId, app }: { projectId: string; app
   ]
 
   return (
-    <div data-ui="1" data-noprint="1" style={{ position: 'fixed', right: 20, bottom: 18, zIndex: 70, fontFamily: SANS }}>
+    <div data-ui="1" data-noprint="1" data-rev-keep="1" style={{ position: 'fixed', right: 20, bottom: 18, zIndex: 70, fontFamily: SANS }}>
       <style>{KIT_CSS}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#17161A', borderRadius: 14, padding: '7px 9px', boxShadow: '0 16px 44px rgba(23,22,26,0.45)', animation: 'tkFadeUp 0.25s ease' }}>
         <span style={{ fontFamily: MONO, fontSize: 8.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8A867F', padding: '0 7px' }}>
