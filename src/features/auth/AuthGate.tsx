@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseReady } from '../../lib/supabase'
 import { initSync, stopSync } from '../../lib/sync'
+import CloudIssues from '../cloud/CloudIssues'
 
 type Phase = 'loading' | 'signin' | 'notmember' | 'syncing' | 'ready' | 'error'
 
@@ -87,7 +88,12 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   // constante de módulo, pero los hooks viven en CloudGate para no romper las
   // reglas de hooks con este return temprano.
   if (!supabaseReady) return <>{children}</>
-  return <CloudGate>{children}</CloudGate>
+  return (
+    <>
+      <CloudGate>{children}</CloudGate>
+      <CloudIssues />
+    </>
+  )
 }
 
 function CloudGate({ children }: { children: ReactNode }) {

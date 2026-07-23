@@ -4,6 +4,7 @@
 
 import { KEYS, read, writeLocal, setWriteHook } from './storage'
 import { supabase, supabaseReady } from './supabase'
+import { errorMessage, reportCloudIssue, resolveCloudIssue } from './cloud-events'
 
 // ---- table <-> local mappers ----
 const CLIENTE_COLS = ['id', 'nombre', 'web', 'contacto', 'email', 'telefono', 'contactos', 'notas', 'created']
@@ -96,6 +97,31 @@ const LISTS: ListSpec[] = [
   { key: KEYS.revisiones, table: 'revisiones', toRow: revToRow, fromRow: rowToRev },
 ]
 
+interface VersionedRow {
+  row: any
+  updatedAt: string | null
+}
+
+const snapshots: Record<string, Map<string, VersionedRow>> = {}
+const docVersions = new Map<string, string | null>()
+
+class SyncConflict extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SyncConflict'
+  }
+}
+
+const sameRow = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b)
+
+function rememberRows(spec: ListSpec, cloudRows: any[], localRows: any[]): void {
+  const cloudById = new Map(cloudRows.map((row) => [row.id, row]))
+  snapshots[spec.key] = new Map(localRows.map((item) => {
+    const row = spec.toRow(item)
+    return [row.id, { row, updatedAt: cloudById.get(row.id)?.updated_at ?? null }]
+  }))
+}
+
 const VENTA_PREFIX = KEYS.venta('')
 const PLANOS_PREFIX = KEYS.planos('')
 
@@ -113,30 +139,99 @@ const readKnown = (key: string): string[] | null => read<string[]>(knownKey(key)
 const writeKnown = (key: string, ids: string[]) => writeLocal(knownKey(key), ids)
 
 // ---- push ----
-async function pushList(spec: ListSpec): Promise<void> {
+async function pushList(spec: ListSpec, forceAll = false): Promise<void> {
   const list: any[] = read<any>(spec.key)?.list || []
   const rows = list.map(spec.toRow)
-  if (rows.length) {
-    const { error } = await supabase.from(spec.table).upsert(rows)
-    if (error) console.warn('[sync] upsert', spec.table, error.message)
+  if (forceAll) {
+    if (!rows.length) return
+    const stamp = new Date().toISOString()
+    const { error } = await supabase.from(spec.table).upsert(rows.map((row) => ({ ...row, updated_at: stamp })))
+    if (error) throw error
+    return
   }
-  const localIds = new Set(rows.map((r) => r.id))
-  const toDelete = (readKnown(spec.key) || []).filter((id) => !localIds.has(id))
-  if (toDelete.length) {
-    await supabase.from(spec.table).delete().in('id', toDelete)
-    if (spec.table === 'proyectos') await supabase.from('documentos').delete().in('project_id', toDelete)
+
+  const baseline = snapshots[spec.key]
+  if (!baseline) {
+    // A partial initial pull must never turn the next edit into a full-table upsert.
+    rememberRows(spec, [], list)
+    throw new Error('No se pudo establecer la versión inicial de ' + spec.table)
   }
-  writeKnown(spec.key, [...localIds])
+  const current = new Map(rows.map((row) => [row.id, row]))
+
+  for (const row of rows) {
+    const previous = baseline.get(row.id)
+    if (previous && sameRow(previous.row, row)) continue
+    const updated_at = new Date().toISOString()
+    if (!previous) {
+      const { data, error } = await supabase.from(spec.table)
+        .insert({ ...row, updated_at }).select('id, updated_at').single()
+      if (error) {
+        if (String(error.code) === '23505') throw new SyncConflict('Otro usuario ha creado este registro.')
+        throw error
+      }
+      baseline.set(row.id, { row, updatedAt: data.updated_at })
+      continue
+    }
+
+    let query: any = supabase.from(spec.table).update({ ...row, updated_at }).eq('id', row.id)
+    query = previous.updatedAt == null
+      ? query.is('updated_at', null)
+      : query.eq('updated_at', previous.updatedAt)
+    const { data, error } = await query.select('id, updated_at').maybeSingle()
+    if (error) throw error
+    if (!data) throw new SyncConflict('Otro usuario ha modificado este registro. Tus cambios siguen guardados en este dispositivo.')
+    baseline.set(row.id, { row, updatedAt: data.updated_at })
+  }
+
+  for (const [id, previous] of [...baseline.entries()]) {
+    if (current.has(id)) continue
+    let query: any = supabase.from(spec.table).delete().eq('id', id)
+    query = previous.updatedAt == null
+      ? query.is('updated_at', null)
+      : query.eq('updated_at', previous.updatedAt)
+    const { data, error } = await query.select('id').maybeSingle()
+    if (error) throw error
+    if (!data) {
+      const { data: remote, error: checkError } = await supabase.from(spec.table).select('id').eq('id', id).maybeSingle()
+      if (checkError) throw checkError
+      if (remote) throw new SyncConflict('Otro usuario ha modificado el registro que intentabas borrar.')
+    }
+    if (spec.table === 'proyectos') {
+      const { error: docError } = await supabase.from('documentos').delete().eq('project_id', id)
+      if (docError) throw docError
+      docVersions.delete(id)
+    }
+    baseline.delete(id)
+  }
+  writeKnown(spec.key, [...baseline.keys()])
 }
 
 async function pushDoc(key: string): Promise<void> {
   const info = docKeyInfo(key)
   if (!info) return
   const val = read<any>(key)
-  const row: any = { project_id: info.id, updated: new Date().toISOString() }
-  row[info.col] = val
-  const { error } = await supabase.from('documentos').upsert(row, { onConflict: 'project_id' })
-  if (error) console.warn('[sync] upsert documentos', error.message)
+  const expected = docVersions.get(info.id) ?? null
+  const { data: remote, error: readError } = await supabase.from('documentos')
+    .select('project_id, updated').eq('project_id', info.id).maybeSingle()
+  if (readError) throw readError
+  const currentVersion = remote?.updated ?? null
+  if (currentVersion !== expected) {
+    throw new SyncConflict('Hay una versión más reciente de este documento en la nube. La copia local no se ha sobrescrito.')
+  }
+
+  const updated = new Date().toISOString()
+  let result: any
+  if (remote) {
+    let query: any = supabase.from('documentos').update({ [info.col]: val, updated }).eq('project_id', info.id)
+    query = currentVersion == null ? query.is('updated', null) : query.eq('updated', currentVersion)
+    result = await query.select('project_id, updated').maybeSingle()
+  } else {
+    result = await supabase.from('documentos')
+      .insert({ project_id: info.id, [info.col]: val, updated }).select('project_id, updated').single()
+  }
+  if (result.error) throw result.error
+  if (!result.data) throw new SyncConflict('El documento ha cambiado mientras se estaba sincronizando.')
+  docVersions.set(info.id, result.data.updated)
 }
 
 // ---- pull ----
@@ -146,18 +241,25 @@ async function pull(): Promise<void> {
     const { data, error } = await supabase.from(spec.table).select('*')
     if (error) {
       console.warn('[sync] pull', spec.table, error.message)
+      rememberRows(spec, [], read<any>(spec.key)?.list || [])
       continue
     }
     const prev = read<any>(spec.key)
     const prevById: Record<string, any> = {}
     for (const it of prev?.list || []) prevById[it.id] = it
     const list = (data || []).map((r: any) => spec.fromRow(r, prevById))
+    rememberRows(spec, data || [], list)
     if (spec.key === KEYS.projects) writeLocal(spec.key, { list, current: prev?.current ?? null })
     else writeLocal(spec.key, { list })
     writeKnown(spec.key, list.map((x: any) => x.id))
   }
-  const { data: docs } = await supabase.from('documentos').select('*')
+  const { data: docs, error: docsError } = await supabase.from('documentos').select('*')
+  if (docsError) throw docsError
+  docVersions.clear()
+  const projects: any[] = read<any>(KEYS.projects)?.list || []
+  for (const project of projects) docVersions.set(project.id, null)
   for (const d of docs || []) {
+    docVersions.set(d.project_id, d.updated ?? null)
     if (d.venta) writeLocal(KEYS.venta(d.project_id), d.venta)
     if (d.planos) writeLocal(KEYS.planos(d.project_id), d.planos)
   }
@@ -171,6 +273,7 @@ async function pullOne(spec: ListSpec): Promise<void> {
   const prevById: Record<string, any> = {}
   for (const it of prev?.list || []) prevById[it.id] = it
   const list = (data || []).map((r: any) => spec.fromRow(r, prevById))
+  rememberRows(spec, data || [], list)
   if (spec.key === KEYS.projects) writeLocal(spec.key, { list, current: prev?.current ?? null })
   else writeLocal(spec.key, { list })
   writeKnown(spec.key, list.map((x: any) => x.id))
@@ -207,7 +310,7 @@ function startRealtime(): void {
 }
 
 async function seedFromLocal(): Promise<void> {
-  for (const spec of LISTS) await pushList(spec)
+  for (const spec of LISTS) await pushList(spec, true)
   const projects: any[] = read<any>(KEYS.projects)?.list || []
   for (const p of projects) {
     if (read(KEYS.venta(p.id)) != null) await pushDoc(KEYS.venta(p.id))
@@ -224,16 +327,32 @@ function flushKey(key: string): void {
   if (!fn) return
   delete pending[key]
   clearTimeout(timers[key])
-  fn().catch((e) => {
-    // Push fallido (red caída, 5xx): reencolar y reintentar, no descartar la
-    // edición en silencio.
-    console.warn('[sync] push', key, e?.message)
-    if (!pending[key]) {
-      pending[key] = fn
-      clearTimeout(timers[key])
-      timers[key] = setTimeout(() => flushKey(key), 10000)
-    }
-  })
+  const issueId = 'sync:' + key
+  fn()
+    .then(() => resolveCloudIssue(issueId))
+    .catch((error) => {
+      console.error('[sync] push', key, error)
+      const conflict = error instanceof SyncConflict
+      reportCloudIssue({
+        id: issueId,
+        title: conflict ? 'Conflicto de sincronización' : 'Cambios pendientes de sincronizar',
+        message: errorMessage(error),
+        retry: conflict ? undefined : async () => {
+          try {
+            await fn()
+            return true
+          } catch (retryError) {
+            console.error('[sync] retry', key, retryError)
+            return false
+          }
+        },
+      })
+      if (!conflict && !pending[key]) {
+        pending[key] = fn
+        clearTimeout(timers[key])
+        timers[key] = setTimeout(() => flushKey(key), 10000)
+      }
+    })
 }
 
 /** Fire every pending push right now (on reload / tab hide, so nothing is lost). */
@@ -303,8 +422,14 @@ export async function initSync(): Promise<void> {
     const localHasData = LISTS.some((l) => (read<any>(l.key)?.list || []).length > 0)
     if (dbEmpty && localHasData) await seedFromLocal()
     await pull()
-  } catch (e: any) {
-    console.warn('[sync] initSync', e?.message)
+  } catch (error) {
+    console.error('[sync] initSync', error)
+    reportCloudIssue({
+      id: 'sync:init',
+      title: 'Sincronización incompleta',
+      message: errorMessage(error),
+      retry: async () => { try { await pull(); return true } catch { return false } },
+    })
   }
   setWriteHook(onWrite)
   hookUnloadFlush()
@@ -318,6 +443,9 @@ export function stopSync(): void {
   try { rtChannel?.unsubscribe() } catch { /* ignore */ }
   rtChannel = null
   realtimeOn = false
+  for (const key of Object.keys(snapshots)) delete snapshots[key]
+  docVersions.clear()
+  resolveCloudIssue('sync:init')
   setWriteHook(null)
   started = false
 }
